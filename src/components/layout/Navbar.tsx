@@ -16,10 +16,10 @@ const Navbar = () => {
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary">
-            <span className="text-lg font-bold text-primary-foreground">D</span>
+            <span className="text-lg font-bold text-primary-foreground">S</span>
           </div>
           <span className="text-xl font-bold text-foreground">
-            DigiStore
+            SmartLife Hub
           </span>
         </Link>
 

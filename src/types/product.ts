@@ -4,7 +4,10 @@ export type Category =
   | 'fitness'
   | 'technology'
   | 'employment'
-  | 'lifestyle';
+  | 'lifestyle'
+  | 'business'
+  | 'education'
+  | 'relationships';
 
 export interface Product {
   id: string;
