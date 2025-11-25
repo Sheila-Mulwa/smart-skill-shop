@@ -64,6 +64,9 @@ export default {
           tech: "hsl(var(--category-tech))",
           employment: "hsl(var(--category-employment))",
           lifestyle: "hsl(var(--category-lifestyle))",
+          business: "hsl(var(--category-business))",
+          education: "hsl(var(--category-education))",
+          relationships: "hsl(var(--category-relationships))",
         },
       },
       borderRadius: {

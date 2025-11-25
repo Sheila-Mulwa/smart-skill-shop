@@ -10,9 +10,9 @@ const Footer = () => {
           <div className="space-y-4">
             <Link to="/" className="flex items-center gap-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary">
-                <span className="text-lg font-bold text-primary-foreground">D</span>
+                <span className="text-lg font-bold text-primary-foreground">S</span>
               </div>
-              <span className="text-xl font-bold text-foreground">DigiStore</span>
+              <span className="text-xl font-bold text-foreground">SmartLife Hub</span>
             </Link>
             <p className="text-sm text-muted-foreground">
               Your trusted source for premium digital products. E-books, guides, courses, and more.
@@ -93,7 +93,7 @@ const Footer = () => {
 
         <div className="mt-8 border-t border-border pt-8 text-center">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} DigiStore. All rights reserved.
+            © {new Date().getFullYear()} SmartLife Hub. All rights reserved.
           </p>
         </div>
       </div>
