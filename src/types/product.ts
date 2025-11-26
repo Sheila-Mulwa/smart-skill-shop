@@ -1,4 +1,4 @@
-export type Category = 
+export type Category =
   | 'nutrition'
   | 'mental-health'
   | 'fitness'
@@ -8,6 +8,8 @@ export type Category =
   | 'business'
   | 'education'
   | 'relationships';
+
+export type ProductTag = 'trending' | 'bestseller' | 'beginner' | 'advanced' | 'new' | 'popular';
 
 export interface Product {
   id: string;
@@ -21,6 +23,7 @@ export interface Product {
   author: string;
   format: string;
   pages?: number;
+  tags?: ProductTag[];
   featured?: boolean;
 }
 
