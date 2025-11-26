@@ -79,11 +79,11 @@ const Hero = () => {
               <p className="text-sm text-muted-foreground">Digital Products</p>
             </div>
             <div>
-              <p className="text-3xl font-bold text-primary">10K+</p>
+              <p className="text-3xl font-bold text-primary">12K+</p>
               <p className="text-sm text-muted-foreground">Happy Customers</p>
             </div>
             <div>
-              <p className="text-3xl font-bold text-primary">6</p>
+              <p className="text-3xl font-bold text-primary">9</p>
               <p className="text-sm text-muted-foreground">Categories</p>
             </div>
           </div>

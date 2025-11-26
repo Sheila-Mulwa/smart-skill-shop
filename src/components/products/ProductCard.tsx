@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Star, ShoppingCart, FileText } from 'lucide-react';
-import { Product } from '@/types/product';
+import { Star, ShoppingCart } from 'lucide-react';
+import { Product, ProductTag } from '@/types/product';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
 import { cn } from '@/lib/utils';
@@ -9,6 +9,24 @@ interface ProductCardProps {
   product: Product;
   index?: number;
 }
+
+const tagStyles: Record<ProductTag, string> = {
+  trending: 'bg-orange-500 text-white',
+  bestseller: 'bg-green-500 text-white',
+  beginner: 'bg-blue-500 text-white',
+  advanced: 'bg-red-500 text-white',
+  new: 'bg-purple-500 text-white',
+  popular: 'bg-pink-500 text-white',
+};
+
+const tagLabels: Record<ProductTag, string> = {
+  trending: 'Trending',
+  bestseller: 'Bestseller',
+  beginner: 'Beginner',
+  advanced: 'Advanced',
+  new: 'New',
+  popular: 'Popular',
+};
 
 const ProductCard = ({ product, index = 0 }: ProductCardProps) => {
   const { addToCart, isInCart } = useCart();
@@ -21,14 +39,28 @@ const ProductCard = ({ product, index = 0 }: ProductCardProps) => {
     >
       {/* Image */}
       <Link to={`/product/${product.id}`} className="relative overflow-hidden rounded-t-xl">
-        <div className="aspect-[4/3] bg-secondary flex items-center justify-center">
-          <FileText className="h-16 w-16 text-primary/30" />
+        <div className="aspect-[4/3] bg-secondary">
+          <img 
+            src={product.image} 
+            alt={product.title}
+            className="h-full w-full object-cover"
+          />
         </div>
-        {product.featured && (
-          <span className="absolute left-3 top-3 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
-            Featured
-          </span>
-        )}
+        <div className="absolute left-3 top-3 flex flex-wrap gap-1">
+          {product.featured && (
+            <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+              Featured
+            </span>
+          )}
+          {product.tags?.map((tag) => (
+            <span 
+              key={tag}
+              className={cn('rounded-full px-2 py-1 text-xs font-medium', tagStyles[tag])}
+            >
+              {tagLabels[tag]}
+            </span>
+          ))}
+        </div>
       </Link>
 
       {/* Content */}
