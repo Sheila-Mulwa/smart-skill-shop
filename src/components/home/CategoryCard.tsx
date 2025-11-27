@@ -1,24 +1,30 @@
 import { Link } from 'react-router-dom';
-import { Apple, Brain, Dumbbell, Laptop, Briefcase, Sparkles, LucideIcon } from 'lucide-react';
+import { Apple, Dumbbell, Laptop, Briefcase, Sparkles, Rocket, Plane, Video, Globe, LucideIcon } from 'lucide-react';
 import { CategoryInfo } from '@/types/product';
 import { cn } from '@/lib/utils';
 
 const iconMap: Record<string, LucideIcon> = {
   Apple,
-  Brain,
   Dumbbell,
   Laptop,
   Briefcase,
   Sparkles,
+  Rocket,
+  Plane,
+  Video,
+  Globe,
 };
 
 const colorMap: Record<string, string> = {
-  nutrition: 'bg-category-nutrition/10 text-category-nutrition hover:bg-category-nutrition/20',
-  'mental-health': 'bg-category-mental/10 text-category-mental hover:bg-category-mental/20',
-  fitness: 'bg-category-fitness/10 text-category-fitness hover:bg-category-fitness/20',
-  technology: 'bg-category-tech/10 text-category-tech hover:bg-category-tech/20',
-  employment: 'bg-category-employment/10 text-category-employment hover:bg-category-employment/20',
-  lifestyle: 'bg-category-lifestyle/10 text-category-lifestyle hover:bg-category-lifestyle/20',
+  'health-fitness': 'bg-red-500/10 text-red-500 hover:bg-red-500/20',
+  'technology': 'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20',
+  'food-nutrition': 'bg-green-500/10 text-green-500 hover:bg-green-500/20',
+  'entrepreneurship': 'bg-orange-500/10 text-orange-500 hover:bg-orange-500/20',
+  'culture-travel': 'bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20',
+  'social-media': 'bg-pink-500/10 text-pink-500 hover:bg-pink-500/20',
+  'spirituality': 'bg-purple-500/10 text-purple-500 hover:bg-purple-500/20',
+  'career': 'bg-amber-500/10 text-amber-500 hover:bg-amber-500/20',
+  'diaspora': 'bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20',
 };
 
 interface CategoryCardProps {
@@ -28,7 +34,7 @@ interface CategoryCardProps {
 
 const CategoryCard = ({ category, index }: CategoryCardProps) => {
   const Icon = iconMap[category.icon] || Sparkles;
-  const colorClass = colorMap[category.id] || colorMap.lifestyle;
+  const colorClass = colorMap[category.id] || 'bg-primary/10 text-primary hover:bg-primary/20';
 
   return (
     <Link

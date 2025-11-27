@@ -11,6 +11,7 @@ import CartPage from "./pages/CartPage";
 import CheckoutPage from "./pages/CheckoutPage";
 import AuthPage from "./pages/AuthPage";
 import SearchPage from "./pages/SearchPage";
+import AdminUploadPage from "./pages/AdminUploadPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/checkout" element={<CheckoutPage />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/admin/upload" element={<AdminUploadPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

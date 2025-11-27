@@ -1,15 +1,15 @@
 export type Category =
-  | 'nutrition'
-  | 'mental-health'
-  | 'fitness'
+  | 'health-fitness'
   | 'technology'
-  | 'employment'
-  | 'lifestyle'
-  | 'business'
-  | 'education'
-  | 'relationships';
+  | 'food-nutrition'
+  | 'entrepreneurship'
+  | 'culture-travel'
+  | 'social-media'
+  | 'spirituality'
+  | 'career'
+  | 'diaspora';
 
-export type ProductTag = 'trending' | 'bestseller' | 'beginner' | 'advanced' | 'new' | 'popular';
+export type ProductTag = 'trending' | 'bestseller' | 'beginner' | 'advanced' | 'all-levels' | 'new' | 'popular';
 
 export interface Product {
   id: string;
@@ -25,6 +25,7 @@ export interface Product {
   pages?: number;
   tags?: ProductTag[];
   featured?: boolean;
+  level?: 'beginner' | 'advanced' | 'all-levels';
 }
 
 export interface CartItem {
