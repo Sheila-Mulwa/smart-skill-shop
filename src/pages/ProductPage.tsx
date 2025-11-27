@@ -1,9 +1,37 @@
 import { useParams, Link } from 'react-router-dom';
-import { Star, ShoppingCart, Download, FileText, User, ChevronLeft } from 'lucide-react';
+import { Star, ShoppingCart, Download, FileText, User, ChevronLeft, Award, TrendingUp } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { getProductById, categories } from '@/data/products';
 import { useCart } from '@/context/CartContext';
+import { cn } from '@/lib/utils';
+import { ProductTag } from '@/types/product';
+
+const tagStyles: Record<ProductTag, string> = {
+  trending: 'bg-orange-500 text-white',
+  bestseller: 'bg-green-500 text-white',
+  beginner: 'bg-blue-500 text-white',
+  advanced: 'bg-red-500 text-white',
+  'all-levels': 'bg-purple-500 text-white',
+  new: 'bg-amber-500 text-white',
+  popular: 'bg-pink-500 text-white',
+};
+
+const tagLabels: Record<ProductTag, string> = {
+  trending: '🔥 Trending',
+  bestseller: '⭐ Bestseller',
+  beginner: 'Beginner Friendly',
+  advanced: 'Advanced',
+  'all-levels': 'All Levels',
+  new: '✨ New Release',
+  popular: '💎 Popular',
+};
+
+const levelStyles = {
+  beginner: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  advanced: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  'all-levels': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+};
 
 const ProductPage = () => {
   const { productId } = useParams<{ productId: string }>();
@@ -27,6 +55,8 @@ const ProductPage = () => {
     );
   }
 
+  const specialTags = product.tags?.filter(tag => ['trending', 'bestseller', 'popular', 'new'].includes(tag)) || [];
+
   return (
     <Layout>
       <div className="container py-8">
@@ -43,10 +73,41 @@ const ProductPage = () => {
 
         <div className="grid gap-8 lg:grid-cols-2">
           {/* Product Image */}
-          <div className="overflow-hidden rounded-2xl border border-border bg-secondary">
-            <div className="flex aspect-square items-center justify-center">
-              <FileText className="h-32 w-32 text-primary/30" />
+          <div className="relative overflow-hidden rounded-2xl border border-border bg-secondary">
+            <div className="aspect-square">
+              <img 
+                src={product.image} 
+                alt={product.title}
+                className="h-full w-full object-cover"
+              />
             </div>
+            
+            {/* Badges overlay */}
+            <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+              {product.featured && (
+                <span className="flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg">
+                  <Award className="h-4 w-4" />
+                  Featured
+                </span>
+              )}
+              {specialTags.map((tag) => (
+                <span 
+                  key={tag}
+                  className={cn('rounded-full px-3 py-1.5 text-sm font-medium shadow-lg', tagStyles[tag])}
+                >
+                  {tagLabels[tag]}
+                </span>
+              ))}
+            </div>
+
+            {/* Level badge */}
+            {product.level && (
+              <div className="absolute bottom-4 right-4">
+                <span className={cn('rounded-full px-3 py-1.5 text-sm font-semibold shadow-lg', levelStyles[product.level])}>
+                  {product.level === 'all-levels' ? 'All Levels' : product.level.charAt(0).toUpperCase() + product.level.slice(1)}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Product Info */}
