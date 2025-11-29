@@ -53,9 +53,11 @@ const CartPage = () => {
                     to={`/product/${item.product.id}`}
                     className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-lg bg-secondary"
                   >
-                    <div className="flex h-full items-center justify-center">
-                      <ShoppingBag className="h-8 w-8 text-primary/30" />
-                    </div>
+                    <img
+                      src={item.product.image}
+                      alt={item.product.title}
+                      className="h-full w-full object-cover"
+                    />
                   </Link>
 
                   {/* Product Info */}

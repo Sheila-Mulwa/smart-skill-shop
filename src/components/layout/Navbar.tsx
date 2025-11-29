@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
 import { categories } from '@/data/products';
+import { useAuth } from '@/hooks/useAuth';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { getTotalItems } = useCart();
+  const { isAuthenticated } = useAuth();
   const totalItems = getTotalItems();
 
   return (
@@ -50,11 +52,13 @@ const Navbar = () => {
             </Button>
           </Link>
           
-          <Link to="/admin/upload" title="Upload Product">
-            <Button variant="ghost" size="icon" className="hidden md:flex">
-              <Upload className="h-5 w-5" />
-            </Button>
-          </Link>
+          {isAuthenticated && (
+            <Link to="/admin/upload" title="Upload Product">
+              <Button variant="ghost" size="icon" className="hidden md:flex">
+                <Upload className="h-5 w-5" />
+              </Button>
+            </Link>
+          )}
           
           <Link to="/auth">
             <Button variant="ghost" size="icon">
@@ -106,13 +110,15 @@ const Navbar = () => {
                 {category.name}
               </Link>
             ))}
-            <Link
-              to="/admin/upload"
-              className="rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-secondary"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              📤 Upload Product
-            </Link>
+            {isAuthenticated && (
+              <Link
+                to="/admin/upload"
+                className="rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-secondary"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                📤 Upload Product
+              </Link>
+            )}
           </nav>
         </div>
       )}
