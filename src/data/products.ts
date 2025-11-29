@@ -8,6 +8,12 @@ import productivitySystem from '@/assets/products/productivity-system.jpg';
 import startupBlueprint from '@/assets/products/startup-blueprint.jpg';
 import speedLearning from '@/assets/products/speed-learning.jpg';
 import communicationMastery from '@/assets/products/communication-mastery.jpg';
+import homeWorkout from '@/assets/products/home-workout.jpg';
+import excelMastery from '@/assets/products/excel-mastery.jpg';
+import aiChatGPT from '@/assets/products/ai-chatgpt.jpg';
+import digitalMarketing from '@/assets/products/digital-marketing.jpg';
+import youtubeMonetization from '@/assets/products/youtube-monetization.jpg';
+import instagramGrowth from '@/assets/products/instagram-growth.jpg';
 
 export const categories: CategoryInfo[] = [
   {
@@ -99,7 +105,7 @@ export const products: Product[] = [
     description: 'Build muscle and burn fat with no equipment required - perfect for beginners starting their fitness journey.',
     price: 29.99,
     category: 'health-fitness',
-    image: bodyTransformation,
+    image: homeWorkout,
     rating: 4.6,
     reviewCount: 312,
     author: 'Fitness Pro Team',
@@ -146,7 +152,7 @@ export const products: Product[] = [
     description: 'Master advanced Excel functions, pivot tables, macros, and data visualization techniques.',
     price: 27.99,
     category: 'technology',
-    image: pythonCourse,
+    image: excelMastery,
     rating: 4.7,
     reviewCount: 456,
     author: 'Data Pro Academy',
@@ -161,7 +167,7 @@ export const products: Product[] = [
     description: 'Harness the power of AI tools for productivity, content creation, and business automation.',
     price: 44.99,
     category: 'technology',
-    image: pythonCourse,
+    image: aiChatGPT,
     rating: 4.9,
     reviewCount: 678,
     author: 'AI Insights Lab',
@@ -240,7 +246,7 @@ export const products: Product[] = [
     description: 'Master social media marketing, SEO, and paid advertising to grow your business online.',
     price: 37.99,
     category: 'entrepreneurship',
-    image: startupBlueprint,
+    image: digitalMarketing,
     rating: 4.7,
     reviewCount: 289,
     author: 'Marketing Pro Team',
@@ -318,7 +324,7 @@ export const products: Product[] = [
     description: 'Build and monetize a successful YouTube channel with content strategies and growth hacks.',
     price: 34.99,
     category: 'social-media',
-    image: productivitySystem,
+    image: youtubeMonetization,
     rating: 4.8,
     reviewCount: 387,
     author: 'Creator Academy',
@@ -334,7 +340,7 @@ export const products: Product[] = [
     description: 'Grow your Instagram from 0 to 100K followers with proven content and engagement strategies.',
     price: 27.99,
     category: 'social-media',
-    image: productivitySystem,
+    image: instagramGrowth,
     rating: 4.7,
     reviewCount: 534,
     author: 'Social Media Pro',
