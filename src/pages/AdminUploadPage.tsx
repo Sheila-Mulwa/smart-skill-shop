@@ -10,6 +10,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { categories } from '@/data/products';
 import { Category, ProductTag } from '@/types/product';
+import { useFileUpload } from '@/hooks/useFileUpload';
+import { supabase } from '@/integrations/supabase/client';
+import { Progress } from '@/components/ui/progress';
+import { useNavigate } from 'react-router-dom';
 
 interface ProductFormData {
   title: string;
@@ -53,6 +57,8 @@ const AdminUploadPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<string | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const { uploadFile, uploadProgress, resetProgress } = useFileUpload();
+  const navigate = useNavigate();
 
   const handleInputChange = (field: keyof ProductFormData, value: string | boolean | File | null) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -153,9 +159,52 @@ const AdminUploadPage = () => {
     setIsSubmitting(true);
 
     try {
-      // TODO: Implement actual upload to Supabase storage
-      // For now, simulate the upload
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Check authentication
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast({
+          title: 'Authentication required',
+          description: 'Please log in to upload products.',
+          variant: 'destructive',
+        });
+        navigate('/auth');
+        return;
+      }
+
+      // 1. Upload PDF file
+      const timestamp = Date.now();
+      const pdfFileName = `${timestamp}-${formData.pdfFile!.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const pdfPath = await uploadFile(formData.pdfFile!, 'products-pdfs', pdfFileName);
+      
+      if (!pdfPath) {
+        throw new Error('PDF upload failed');
+      }
+
+      // 2. Upload cover image (if provided)
+      let coverUrl = null;
+      if (formData.coverImage) {
+        const coverFileName = `${timestamp}-${formData.coverImage.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        coverUrl = await uploadFile(formData.coverImage, 'product-covers', coverFileName);
+      }
+
+      // 3. Insert product metadata into database
+      const { error: dbError } = await supabase.from('products').insert({
+        title: formData.title.trim(),
+        description: formData.description.trim(),
+        price: parseFloat(formData.price),
+        category: formData.category,
+        author: formData.author.trim(),
+        format: formData.format,
+        pages: formData.pages ? parseInt(formData.pages) : null,
+        level: formData.level || null,
+        tags: formData.tags,
+        featured: formData.featured,
+        pdf_url: pdfPath,
+        cover_url: coverUrl,
+      });
+
+      if (dbError) throw dbError;
 
       toast({
         title: 'Product uploaded successfully!',
@@ -166,10 +215,15 @@ const AdminUploadPage = () => {
       setFormData(initialFormData);
       setPdfPreview(null);
       setCoverPreview(null);
+      resetProgress();
+      
+      // Navigate to home after 2 seconds
+      setTimeout(() => navigate('/'), 2000);
     } catch (error) {
+      console.error('Upload error:', error);
       toast({
         title: 'Upload failed',
-        description: 'Something went wrong. Please try again.',
+        description: error instanceof Error ? error.message : 'Something went wrong. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -486,6 +540,15 @@ const AdminUploadPage = () => {
                   </>
                 )}
               </Button>
+
+              {uploadProgress.status === 'uploading' && (
+                <div className="space-y-2">
+                  <Progress value={uploadProgress.progress} className="h-2" />
+                  <p className="text-center text-xs text-muted-foreground">
+                    Uploading files... {uploadProgress.progress}%
+                  </p>
+                </div>
+              )}
 
               <Button
                 type="button"
