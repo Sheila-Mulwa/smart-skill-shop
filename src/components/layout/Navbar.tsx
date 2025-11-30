@@ -52,13 +52,11 @@ const Navbar = () => {
             </Button>
           </Link>
           
-          {isAuthenticated && (
-            <Link to="/admin/upload" title="Upload Product">
-              <Button variant="ghost" size="icon" className="hidden md:flex">
-                <Upload className="h-5 w-5" />
-              </Button>
-            </Link>
-          )}
+          <Link to="/admin/upload" title="Upload Product">
+            <Button variant="ghost" size="icon" className="hidden md:flex">
+              <Upload className="h-5 w-5" />
+            </Button>
+          </Link>
           
           <Link to="/auth">
             <Button variant="ghost" size="icon">
@@ -110,15 +108,13 @@ const Navbar = () => {
                 {category.name}
               </Link>
             ))}
-            {isAuthenticated && (
-              <Link
-                to="/admin/upload"
-                className="rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-secondary"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                📤 Upload Product
-              </Link>
-            )}
+            <Link
+              to="/admin/upload"
+              className="rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-secondary"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              📤 Upload Product
+            </Link>
           </nav>
         </div>
       )}
