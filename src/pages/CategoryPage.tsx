@@ -2,7 +2,8 @@ import { useParams } from 'react-router-dom';
 import Layout from '@/components/layout/Layout';
 import ProductCard from '@/components/products/ProductCard';
 import { categories, getProductsByCategory } from '@/data/products';
-import { Apple, Brain, Dumbbell, Laptop, Briefcase, Sparkles, LucideIcon } from 'lucide-react';
+import { categoryDescriptions } from '@/data/categoryDescriptions';
+import { Apple, Brain, Dumbbell, Laptop, Briefcase, Sparkles, LucideIcon, CheckCircle } from 'lucide-react';
 
 const iconMap: Record<string, LucideIcon> = {
   Apple,
@@ -18,6 +19,7 @@ const CategoryPage = () => {
   const category = categories.find((c) => c.id === categoryId);
   const products = categoryId ? getProductsByCategory(categoryId) : [];
   const Icon = category ? iconMap[category.icon] || Sparkles : Sparkles;
+  const categoryInfo = categoryId ? categoryDescriptions[categoryId] : null;
 
   if (!category) {
     return (
@@ -45,6 +47,27 @@ const CategoryPage = () => {
           </div>
         </div>
       </section>
+
+      {/* Category Introduction */}
+      {categoryInfo && (
+        <section className="border-b border-border bg-muted/30 py-12">
+          <div className="container">
+            <div className="mx-auto max-w-4xl">
+              <p className="mb-6 text-lg text-muted-foreground">
+                {categoryInfo.intro}
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                {categoryInfo.insights.map((insight, index) => (
+                  <div key={index} className="flex items-start gap-3">
+                    <CheckCircle className="mt-1 h-5 w-5 flex-shrink-0 text-primary" />
+                    <p className="text-muted-foreground">{insight}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Products Grid */}
       <section className="py-12">

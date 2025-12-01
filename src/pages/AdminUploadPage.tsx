@@ -172,6 +172,24 @@ const AdminUploadPage = () => {
         return;
       }
 
+      // Check if user has admin role
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin')
+        .maybeSingle();
+
+      if (roleError || !roleData) {
+        toast({
+          title: 'Unauthorized',
+          description: 'You must be an admin to upload products.',
+          variant: 'destructive',
+        });
+        navigate('/');
+        return;
+      }
+
       // 1. Upload PDF file
       const timestamp = Date.now();
       const pdfFileName = `${timestamp}-${formData.pdfFile!.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;

@@ -10,6 +10,12 @@ import CheckoutPage from "./pages/CheckoutPage";
 import AuthPage from "./pages/AuthPage";
 import SearchPage from "./pages/SearchPage";
 import AdminUploadPage from "./pages/AdminUploadPage";
+import AboutPage from "./pages/AboutPage";
+import FAQPage from "./pages/FAQPage";
+import ContactPage from "./pages/ContactPage";
+import RefundPage from "./pages/RefundPage";
+import PrivacyPage from "./pages/PrivacyPage";
+import TermsPage from "./pages/TermsPage";
 import NotFound from "./pages/NotFound";
 
 const App = () => (
@@ -25,6 +31,12 @@ const App = () => (
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/search" element={<SearchPage />} />
       <Route path="/admin/upload" element={<AdminUploadPage />} />
+      <Route path="/about" element={<AboutPage />} />
+      <Route path="/faq" element={<FAQPage />} />
+      <Route path="/contact" element={<ContactPage />} />
+      <Route path="/refunds" element={<RefundPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   </TooltipProvider>
