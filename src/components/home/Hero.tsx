@@ -19,11 +19,19 @@ const Hero = () => {
     <section className="gradient-hero py-16 md:py-24">
       <div className="container">
         <div className="mx-auto max-w-3xl text-center">
-          <h1 className="animate-fade-in mb-4 text-4xl font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl">
+          <div className="mb-3 animate-fade-in">
+            <span className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary">
+              SmartLife Hub
+            </span>
+          </div>
+          <p className="animate-fade-in mb-2 text-lg font-medium text-primary md:text-xl" style={{ animationDelay: '0.05s' }}>
+            Empowering Your Journey to Excellence
+          </p>
+          <h1 className="animate-fade-in mb-4 text-4xl font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl" style={{ animationDelay: '0.1s' }}>
             Transform Your Life,
             <span className="block text-primary">One Download at a Time</span>
           </h1>
-          <p className="animate-fade-in mb-8 text-lg text-muted-foreground md:text-xl" style={{ animationDelay: '0.1s' }}>
+          <p className="animate-fade-in mb-8 text-lg text-muted-foreground md:text-xl" style={{ animationDelay: '0.15s' }}>
             Discover premium e-books, guides, crash courses, and resources across nutrition, fitness, mental health, technology, and career development.
           </p>
 
