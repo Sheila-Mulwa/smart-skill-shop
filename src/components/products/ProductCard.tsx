@@ -113,7 +113,7 @@ const ProductCard = ({ product, index = 0 }: ProductCardProps) => {
 
         <div className="mt-auto flex items-center justify-between">
           <p className="text-2xl font-bold text-primary">
-            ${product.price.toFixed(2)}
+            KSh. {product.price.toFixed(2)}
           </p>
           <Button
             variant={inCart ? 'secondary' : 'default'}

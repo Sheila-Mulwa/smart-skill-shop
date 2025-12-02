@@ -80,20 +80,34 @@ const Navbar = () => {
           </Tooltip>
           
           {isAuthenticated ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={handleLogout}>
-                  <LogOut className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Logout</TooltipContent>
-            </Tooltip>
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link to="/purchases">
+                    <Button variant="ghost" size="icon" className="hidden md:flex">
+                      <User className="h-5 w-5" />
+                    </Button>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>My Library</TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={handleLogout}>
+                    <LogOut className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Logout</TooltipContent>
+              </Tooltip>
+            </>
           ) : (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Link to="/auth">
-                  <Button variant="ghost" size="icon">
-                    <User className="h-5 w-5" />
+                  <Button variant="default" className="gap-2">
+                    <User className="h-4 w-4" />
+                    <span className="hidden sm:inline">Login</span>
                   </Button>
                 </Link>
               </TooltipTrigger>
@@ -157,6 +171,15 @@ const Navbar = () => {
             >
               📤 Upload Product
             </Link>
+            {isAuthenticated && (
+              <Link
+                to="/purchases"
+                className="rounded-lg px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                📚 My Library
+              </Link>
+            )}
           </nav>
         </div>
       )}
