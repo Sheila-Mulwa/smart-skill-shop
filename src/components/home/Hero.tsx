@@ -19,14 +19,14 @@ const Hero = () => {
     <section className="gradient-hero py-16 md:py-24">
       <div className="container">
         <div className="mx-auto max-w-3xl text-center">
-          <div className="mb-3 animate-fade-in">
+          <div className="mb-3 animate-fade-in flex items-center justify-center gap-3">
             <span className="inline-block rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary">
               SmartLife Hub
             </span>
+            <span className="text-sm font-medium text-muted-foreground">
+              • Empowering Your Journey to Excellence
+            </span>
           </div>
-          <p className="animate-fade-in mb-2 text-lg font-medium text-primary md:text-xl" style={{ animationDelay: '0.05s' }}>
-            Empowering Your Journey to Excellence
-          </p>
           <h1 className="animate-fade-in mb-4 text-4xl font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl" style={{ animationDelay: '0.1s' }}>
             Transform Your Life,
             <span className="block text-primary">One Download at a Time</span>

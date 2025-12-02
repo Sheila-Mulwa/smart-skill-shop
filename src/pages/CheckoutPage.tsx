@@ -482,7 +482,7 @@ const CheckoutPage = () => {
                     Processing...
                   </>
                 ) : (
-                  `Pay $${totalPrice.toFixed(2)}`
+                  `Pay KSh. ${totalPrice.toFixed(2)}`
                 )}
               </Button>
 
@@ -515,7 +515,7 @@ const CheckoutPage = () => {
                       </p>
                     </div>
                     <p className="font-medium text-foreground">
-                      ${(item.product.price * item.quantity).toFixed(2)}
+                      KSh. {(item.product.price * item.quantity).toFixed(2)}
                     </p>
                   </div>
                 ))}
@@ -524,17 +524,17 @@ const CheckoutPage = () => {
               <div className="mt-4 border-t border-border pt-4">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
-                  <span>${totalPrice.toFixed(2)}</span>
+                  <span>KSh. {totalPrice.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>Processing Fee</span>
-                  <span>$0.00</span>
+                  <span>KSh. 0.00</span>
                 </div>
               </div>
 
               <div className="mt-4 flex justify-between border-t border-border pt-4 text-xl font-bold">
                 <span className="text-foreground">Total</span>
-                <span className="text-primary">${totalPrice.toFixed(2)}</span>
+                <span className="text-primary">KSh. {totalPrice.toFixed(2)}</span>
               </div>
             </div>
           </div>

@@ -103,7 +103,7 @@ const CartPage = () => {
                       {/* Price & Remove */}
                       <div className="flex items-center gap-4">
                         <span className="text-lg font-bold text-primary">
-                          ${(item.product.price * item.quantity).toFixed(2)}
+                          KSh. {(item.product.price * item.quantity).toFixed(2)}
                         </span>
                         <Button
                           variant="ghost"
@@ -138,17 +138,17 @@ const CartPage = () => {
               <div className="space-y-3 border-b border-border pb-4">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal ({items.length} items)</span>
-                  <span>${totalPrice.toFixed(2)}</span>
+                  <span>KSh. {totalPrice.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>Processing Fee</span>
-                  <span>$0.00</span>
+                  <span>KSh. 0.00</span>
                 </div>
               </div>
 
               <div className="flex justify-between py-4 text-lg font-semibold text-foreground">
                 <span>Total</span>
-                <span className="text-primary">${totalPrice.toFixed(2)}</span>
+                <span className="text-primary">KSh. {totalPrice.toFixed(2)}</span>
               </div>
 
               <Button

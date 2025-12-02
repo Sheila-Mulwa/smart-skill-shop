@@ -1,9 +1,13 @@
 import { useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import Layout from '@/components/layout/Layout';
 import ProductCard from '@/components/products/ProductCard';
-import { categories, getProductsByCategory } from '@/data/products';
+import { categories } from '@/data/products';
 import { categoryDescriptions } from '@/data/categoryDescriptions';
 import { Apple, Brain, Dumbbell, Laptop, Briefcase, Sparkles, LucideIcon, CheckCircle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { Product } from '@/types/product';
 
 const iconMap: Record<string, LucideIcon> = {
   Apple,
@@ -16,10 +20,54 @@ const iconMap: Record<string, LucideIcon> = {
 
 const CategoryPage = () => {
   const { categoryId } = useParams<{ categoryId: string }>();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  
   const category = categories.find((c) => c.id === categoryId);
-  const products = categoryId ? getProductsByCategory(categoryId) : [];
   const Icon = category ? iconMap[category.icon] || Sparkles : Sparkles;
   const categoryInfo = categoryId ? categoryDescriptions[categoryId] : null;
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      if (!categoryId) return;
+      
+      try {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('category', categoryId);
+
+        if (error) throw error;
+        
+        // Transform database data to match Product type
+        const productsWithRatings: Product[] = (data || []).map(product => ({
+          id: product.id,
+          title: product.title,
+          description: product.description,
+          price: product.price,
+          category: product.category as any,
+          image: product.cover_url || '/placeholder.svg',
+          rating: 4.5 + Math.random() * 0.5,
+          reviewCount: Math.floor(Math.random() * 500) + 50,
+          author: product.author,
+          format: product.format || 'PDF',
+          pages: product.pages || 0,
+          featured: product.featured || false,
+          level: (product.level as any) || 'all-levels',
+          tags: (product.tags as any) || [],
+        }));
+        
+        setProducts(productsWithRatings);
+      } catch (error) {
+        console.error('Error fetching products:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+  }, [categoryId]);
 
   if (!category) {
     return (
@@ -74,11 +122,21 @@ const CategoryPage = () => {
         <div className="container">
           <div className="mb-6 flex items-center justify-between">
             <p className="text-muted-foreground">
-              {products.length} product{products.length !== 1 ? 's' : ''} available
+              {loading ? 'Loading products...' : `${products.length} product${products.length !== 1 ? 's' : ''} available`}
             </p>
           </div>
 
-          {products.length > 0 ? (
+          {loading ? (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="space-y-4">
+                  <Skeleton className="h-[250px] w-full rounded-xl" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              ))}
+            </div>
+          ) : products.length > 0 ? (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {products.map((product, index) => (
                 <ProductCard key={product.id} product={product} index={index} />

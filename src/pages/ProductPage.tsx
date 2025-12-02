@@ -179,9 +179,8 @@ const ProductPage = () => {
             <div className="mt-auto space-y-4">
               <div className="flex items-baseline gap-2">
                 <span className="text-4xl font-bold text-primary">
-                  ${product.price.toFixed(2)}
+                  KSh. {product.price.toFixed(2)}
                 </span>
-                <span className="text-muted-foreground">USD</span>
               </div>
 
               <div className="flex gap-3">

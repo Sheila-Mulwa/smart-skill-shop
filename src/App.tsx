@@ -16,6 +16,7 @@ import ContactPage from "./pages/ContactPage";
 import RefundPage from "./pages/RefundPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
+import PurchasesPage from "./pages/PurchasesPage";
 import NotFound from "./pages/NotFound";
 
 const App = () => (
@@ -37,6 +38,7 @@ const App = () => (
       <Route path="/refunds" element={<RefundPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/terms" element={<TermsPage />} />
+      <Route path="/purchases" element={<PurchasesPage />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   </TooltipProvider>
