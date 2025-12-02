@@ -71,6 +71,44 @@ export type Database = {
         }
         Relationships: []
       }
+      purchases: {
+        Row: {
+          amount: number
+          id: string
+          payment_method: string
+          product_id: string
+          purchased_at: string
+          transaction_id: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          id?: string
+          payment_method: string
+          product_id: string
+          purchased_at?: string
+          transaction_id?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          id?: string
+          payment_method?: string
+          product_id?: string
+          purchased_at?: string
+          transaction_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchases_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
