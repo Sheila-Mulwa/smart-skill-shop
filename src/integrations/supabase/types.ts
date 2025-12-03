@@ -29,6 +29,7 @@ export type Database = {
           pages: number | null
           pdf_url: string
           price: number
+          price_usd: number | null
           tags: string[] | null
           title: string
           updated_at: string
@@ -47,6 +48,7 @@ export type Database = {
           pages?: number | null
           pdf_url: string
           price: number
+          price_usd?: number | null
           tags?: string[] | null
           title: string
           updated_at?: string
@@ -65,6 +67,7 @@ export type Database = {
           pages?: number | null
           pdf_url?: string
           price?: number
+          price_usd?: number | null
           tags?: string[] | null
           title?: string
           updated_at?: string
