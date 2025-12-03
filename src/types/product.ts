@@ -16,6 +16,7 @@ export interface Product {
   title: string;
   description: string;
   price: number;
+  priceUsd?: number;
   category: Category;
   image: string;
   rating: number;
@@ -26,6 +27,7 @@ export interface Product {
   tags?: ProductTag[];
   featured?: boolean;
   level?: 'beginner' | 'advanced' | 'all-levels';
+  pdfUrl?: string;
 }
 
 export interface CartItem {

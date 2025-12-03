@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, Smartphone, Building2, CheckCircle, Lock } from 'lucide-react';
+import { CreditCard, Smartphone, Building2, CheckCircle, Lock, Download } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCart } from '@/context/CartContext';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 type PaymentMethod = 'mpesa' | 'card' | 'paypal';
 
@@ -27,14 +29,22 @@ interface PayPalDetails {
   password: string;
 }
 
+interface PurchasedProduct {
+  id: string;
+  title: string;
+  pdf_url: string;
+}
+
 const CheckoutPage = () => {
   const { items, getTotalPrice, clearCart } = useCart();
+  const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mpesa');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [email, setEmail] = useState('');
+  const [purchaseComplete, setPurchaseComplete] = useState(false);
+  const [purchasedProducts, setPurchasedProducts] = useState<PurchasedProduct[]>([]);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   
-  // Card payment state
   const [cardDetails, setCardDetails] = useState<CardDetails>({
     cardNumber: '',
     cardHolder: '',
@@ -42,12 +52,10 @@ const CheckoutPage = () => {
     cvv: '',
   });
 
-  // M-Pesa state
   const [mpesaDetails, setMpesaDetails] = useState<MpesaDetails>({
     phone: '',
   });
 
-  // PayPal state
   const [paypalDetails, setPaypalDetails] = useState<PayPalDetails>({
     email: '',
     password: '',
@@ -55,12 +63,11 @@ const CheckoutPage = () => {
 
   const totalPrice = getTotalPrice();
 
-  if (items.length === 0) {
+  if (!purchaseComplete && items.length === 0) {
     navigate('/cart');
     return null;
   }
 
-  // Format card number with spaces
   const formatCardNumber = (value: string) => {
     const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
     const matches = v.match(/\d{4,16}/g);
@@ -72,7 +79,6 @@ const CheckoutPage = () => {
     return parts.length ? parts.join(' ') : v;
   };
 
-  // Format expiry date
   const formatExpiryDate = (value: string) => {
     const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
     if (v.length >= 2) {
@@ -81,10 +87,8 @@ const CheckoutPage = () => {
     return v;
   };
 
-  // Format phone number for M-Pesa
   const formatPhoneNumber = (value: string) => {
-    const v = value.replace(/[^0-9+]/gi, '');
-    return v;
+    return value.replace(/[^0-9+]/gi, '');
   };
 
   const handleCardChange = (field: keyof CardDetails, value: string) => {
@@ -143,61 +147,81 @@ const CheckoutPage = () => {
 
   const processCardPayment = async () => {
     if (!validateCardDetails()) return false;
-    
-    // Simulate card payment processing
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    
     toast({
       title: 'Card Payment Successful!',
-      description: `Payment of $${totalPrice.toFixed(2)} processed successfully.`,
+      description: `Payment of KSh. ${totalPrice.toFixed(2)} processed successfully.`,
     });
     return true;
   };
 
   const processMpesaPayment = async () => {
     if (!validateMpesaDetails()) return false;
-    
     const phone = mpesaDetails.phone;
-    
-    // Show STK push initiated toast
     toast({
       title: 'M-Pesa STK Push Sent',
       description: `Check your phone ${phone} for the M-Pesa prompt. Enter your PIN to complete payment.`,
     });
-    
-    // Simulate waiting for M-Pesa confirmation
     await new Promise((resolve) => setTimeout(resolve, 3000));
-    
     toast({
       title: 'M-Pesa Payment Successful!',
-      description: `KES ${(totalPrice * 130).toFixed(0)} received from ${phone}.`,
+      description: `KSh. ${totalPrice.toFixed(0)} received from ${phone}.`,
     });
     return true;
   };
 
   const processPayPalPayment = async () => {
     if (!validatePayPalDetails()) return false;
-    
-    // Simulate PayPal payment processing
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    
     toast({
       title: 'PayPal Payment Successful!',
-      description: `Payment of $${totalPrice.toFixed(2)} completed via PayPal.`,
+      description: `Payment of KSh. ${totalPrice.toFixed(2)} completed via PayPal.`,
     });
     return true;
+  };
+
+  const handleDownload = async (productId: string, pdfUrl: string, title: string) => {
+    setDownloadingId(productId);
+    try {
+      const { data, error } = await supabase.storage
+        .from('products-pdfs')
+        .createSignedUrl(pdfUrl, 3600);
+
+      if (error) throw error;
+
+      const link = document.createElement('a');
+      link.href = data.signedUrl;
+      link.download = `${title}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast({
+        title: 'Download Started',
+        description: `${title} is being downloaded.`,
+      });
+    } catch (error) {
+      console.error('Download error:', error);
+      toast({
+        title: 'Download Failed',
+        description: 'Unable to download file. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email || !email.includes('@')) {
-      toast({ title: 'Invalid email', description: 'Please enter a valid email address', variant: 'destructive' });
+    if (!isAuthenticated || !user) {
+      toast({ title: 'Login required', description: 'Please login to complete your purchase', variant: 'destructive' });
+      navigate('/auth');
       return;
     }
     
     setIsProcessing(true);
-
     let success = false;
     
     try {
@@ -214,14 +238,35 @@ const CheckoutPage = () => {
       }
 
       if (success) {
-        toast({
-          title: 'Order Complete!',
-          description: 'Your digital products are ready for download. Check your email.',
-        });
+        const purchasePromises = items.map(item => 
+          supabase.from('purchases').insert({
+            user_id: user.id,
+            product_id: item.product.id,
+            amount: item.product.price * item.quantity,
+            payment_method: paymentMethod,
+            transaction_id: `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          })
+        );
+
+        await Promise.all(purchasePromises);
+
+        const products: PurchasedProduct[] = items.map(item => ({
+          id: item.product.id,
+          title: item.product.title,
+          pdf_url: (item.product as any).pdfUrl || (item.product as any).pdf_url || '',
+        }));
+
+        setPurchasedProducts(products);
+        setPurchaseComplete(true);
         clearCart();
-        navigate('/');
+
+        toast({
+          title: 'Purchase Complete!',
+          description: 'Your products are ready for download below.',
+        });
       }
     } catch (error) {
+      console.error('Checkout error:', error);
       toast({
         title: 'Payment Failed',
         description: 'Something went wrong. Please try again.',
@@ -233,25 +278,59 @@ const CheckoutPage = () => {
   };
 
   const paymentOptions = [
-    {
-      id: 'mpesa' as const,
-      name: 'M-Pesa',
-      description: 'Pay with M-Pesa mobile money',
-      icon: Smartphone,
-    },
-    {
-      id: 'card' as const,
-      name: 'Card Payment',
-      description: 'Visa, Mastercard, Amex',
-      icon: CreditCard,
-    },
-    {
-      id: 'paypal' as const,
-      name: 'PayPal',
-      description: 'Pay with PayPal account',
-      icon: Building2,
-    },
+    { id: 'mpesa' as const, name: 'M-Pesa', description: 'Pay with M-Pesa mobile money', icon: Smartphone },
+    { id: 'card' as const, name: 'Card Payment', description: 'Visa, Mastercard, Amex', icon: CreditCard },
+    { id: 'paypal' as const, name: 'PayPal', description: 'Pay with PayPal account', icon: Building2 },
   ];
+
+  if (purchaseComplete) {
+    return (
+      <Layout>
+        <div className="container py-12">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="mb-6 flex justify-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
+                <CheckCircle className="h-10 w-10 text-green-600" />
+              </div>
+            </div>
+            <h1 className="mb-4 text-3xl font-bold text-foreground">Payment Successful!</h1>
+            <p className="mb-8 text-muted-foreground">
+              Your purchase is complete. Download your products below.
+            </p>
+
+            <div className="space-y-4 rounded-xl border border-border bg-card p-6">
+              <h2 className="text-lg font-semibold text-foreground">Your Downloads</h2>
+              {purchasedProducts.map((product) => (
+                <div
+                  key={product.id}
+                  className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-4"
+                >
+                  <span className="font-medium text-foreground">{product.title}</span>
+                  <Button
+                    onClick={() => handleDownload(product.id, product.pdf_url, product.title)}
+                    disabled={downloadingId === product.id}
+                    className="gap-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    {downloadingId === product.id ? 'Downloading...' : 'Download'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 flex justify-center gap-4">
+              <Button variant="outline" onClick={() => navigate('/purchases')}>
+                View My Library
+              </Button>
+              <Button onClick={() => navigate('/')}>
+                Continue Shopping
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -259,38 +338,10 @@ const CheckoutPage = () => {
         <h1 className="mb-8 text-3xl font-bold text-foreground">Checkout</h1>
 
         <div className="grid gap-8 lg:grid-cols-2">
-          {/* Payment Form */}
           <div>
             <form onSubmit={handleCheckout} className="space-y-6">
-              {/* Contact Info */}
               <div className="rounded-xl border border-border bg-card p-6">
-                <h2 className="mb-4 text-lg font-semibold text-foreground">
-                  Contact Information
-                </h2>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="email">Email Address</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="your@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      className="mt-1"
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Download links will be sent to this email
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Method */}
-              <div className="rounded-xl border border-border bg-card p-6">
-                <h2 className="mb-4 text-lg font-semibold text-foreground">
-                  Payment Method
-                </h2>
+                <h2 className="mb-4 text-lg font-semibold text-foreground">Payment Method</h2>
                 <div className="space-y-3">
                   {paymentOptions.map((option) => (
                     <button
@@ -316,9 +367,7 @@ const CheckoutPage = () => {
                       </div>
                       <div className="flex-1">
                         <p className="font-medium text-foreground">{option.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {option.description}
-                        </p>
+                        <p className="text-sm text-muted-foreground">{option.description}</p>
                       </div>
                       {paymentMethod === option.id && (
                         <CheckCircle className="h-5 w-5 text-primary" />
@@ -327,7 +376,6 @@ const CheckoutPage = () => {
                   ))}
                 </div>
 
-                {/* M-Pesa Payment Form */}
                 {paymentMethod === 'mpesa' && (
                   <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -347,20 +395,18 @@ const CheckoutPage = () => {
                         maxLength={13}
                       />
                       <p className="mt-1 text-xs text-muted-foreground">
-                        An STK push will be sent to this number. Amount: KES {(totalPrice * 130).toFixed(0)}
+                        An STK push will be sent to this number. Amount: KSh. {totalPrice.toFixed(0)}
                       </p>
                     </div>
                   </div>
                 )}
 
-                {/* Card Payment Form */}
                 {paymentMethod === 'card' && (
                   <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Lock className="h-4 w-4" />
                       <span>Your card details are secure and encrypted</span>
                     </div>
-                    
                     <div>
                       <Label htmlFor="card-number">Card Number</Label>
                       <Input
@@ -374,7 +420,6 @@ const CheckoutPage = () => {
                         maxLength={19}
                       />
                     </div>
-
                     <div>
                       <Label htmlFor="card-holder">Cardholder Name</Label>
                       <Input
@@ -387,7 +432,6 @@ const CheckoutPage = () => {
                         className="mt-1"
                       />
                     </div>
-
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="expiry-date">Expiry Date</Label>
@@ -416,7 +460,6 @@ const CheckoutPage = () => {
                         />
                       </div>
                     </div>
-
                     <div className="flex gap-2 pt-2">
                       <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/100px-Visa_Inc._logo.svg.png" alt="Visa" className="h-6 object-contain" />
                       <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/100px-Mastercard-logo.svg.png" alt="Mastercard" className="h-6 object-contain" />
@@ -425,17 +468,11 @@ const CheckoutPage = () => {
                   </div>
                 )}
 
-                {/* PayPal Payment Form */}
                 {paymentMethod === 'paypal' && (
                   <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
                     <div className="flex items-center justify-center gap-2 py-2">
-                      <img 
-                        src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/PayPal.svg/200px-PayPal.svg.png" 
-                        alt="PayPal" 
-                        className="h-8 object-contain"
-                      />
+                      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/PayPal.svg/200px-PayPal.svg.png" alt="PayPal" className="h-8 object-contain" />
                     </div>
-                    
                     <div>
                       <Label htmlFor="paypal-email">PayPal Email</Label>
                       <Input
@@ -448,7 +485,6 @@ const CheckoutPage = () => {
                         className="mt-1"
                       />
                     </div>
-
                     <div>
                       <Label htmlFor="paypal-password">PayPal Password</Label>
                       <Input
@@ -461,7 +497,6 @@ const CheckoutPage = () => {
                         className="mt-1"
                       />
                     </div>
-
                     <p className="text-xs text-muted-foreground">
                       You'll be securely logged into PayPal to complete your payment.
                     </p>
@@ -469,13 +504,7 @@ const CheckoutPage = () => {
                 )}
               </div>
 
-              <Button
-                type="submit"
-                variant="hero"
-                size="xl"
-                className="w-full"
-                disabled={isProcessing}
-              >
+              <Button type="submit" variant="hero" size="xl" className="w-full" disabled={isProcessing}>
                 {isProcessing ? (
                   <>
                     <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
@@ -493,34 +522,20 @@ const CheckoutPage = () => {
             </form>
           </div>
 
-          {/* Order Summary */}
           <div>
             <div className="sticky top-24 rounded-xl border border-border bg-card p-6">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">
-                Order Summary
-              </h2>
-
+              <h2 className="mb-4 text-lg font-semibold text-foreground">Order Summary</h2>
               <div className="max-h-64 space-y-3 overflow-auto">
                 {items.map((item) => (
-                  <div
-                    key={item.product.id}
-                    className="flex items-center justify-between py-2"
-                  >
+                  <div key={item.product.id} className="flex items-center justify-between py-2">
                     <div className="flex-1">
-                      <p className="font-medium text-foreground line-clamp-1">
-                        {item.product.title}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Qty: {item.quantity}
-                      </p>
+                      <p className="font-medium text-foreground line-clamp-1">{item.product.title}</p>
+                      <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
                     </div>
-                    <p className="font-medium text-foreground">
-                      KSh. {(item.product.price * item.quantity).toFixed(2)}
-                    </p>
+                    <p className="font-medium text-foreground">KSh. {(item.product.price * item.quantity).toFixed(2)}</p>
                   </div>
                 ))}
               </div>
-
               <div className="mt-4 border-t border-border pt-4">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
@@ -531,7 +546,6 @@ const CheckoutPage = () => {
                   <span>KSh. 0.00</span>
                 </div>
               </div>
-
               <div className="mt-4 flex justify-between border-t border-border pt-4 text-xl font-bold">
                 <span className="text-foreground">Total</span>
                 <span className="text-primary">KSh. {totalPrice.toFixed(2)}</span>
