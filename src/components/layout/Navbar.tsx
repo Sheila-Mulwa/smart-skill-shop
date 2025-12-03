@@ -7,12 +7,14 @@ import { categories } from '@/data/products';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useAdminCheck } from '@/hooks/useAdminCheck';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { getTotalItems } = useCart();
   const { isAuthenticated, signOut } = useAuth();
   const { toast } = useToast();
+  const { isAdmin } = useAdminCheck();
   const totalItems = getTotalItems();
 
   const handleLogout = async () => {
@@ -26,14 +28,19 @@ const Navbar = () => {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
-        {/* Logo */}
+        {/* Logo with Slogan */}
         <Link to="/" className="flex items-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary">
             <span className="text-lg font-bold text-primary-foreground">S</span>
           </div>
-          <span className="text-xl font-bold text-foreground">
-            SmartLife Hub
-          </span>
+          <div className="flex flex-col">
+            <span className="text-xl font-bold text-foreground leading-tight">
+              SmartLife Hub
+            </span>
+            <span className="text-xs text-muted-foreground hidden sm:block">
+              Empowering Your Journey to Excellence
+            </span>
+          </div>
         </Link>
 
         {/* Desktop Navigation */}
@@ -68,16 +75,18 @@ const Navbar = () => {
             <TooltipContent>Search</TooltipContent>
           </Tooltip>
           
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link to="/admin/upload">
-                <Button variant="ghost" size="icon" className="hidden md:flex">
-                  <Upload className="h-5 w-5" />
-                </Button>
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent>Upload Product</TooltipContent>
-          </Tooltip>
+          {isAdmin && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link to="/admin/upload">
+                  <Button variant="ghost" size="icon" className="hidden md:flex">
+                    <Upload className="h-5 w-5" />
+                  </Button>
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent>Upload Product</TooltipContent>
+            </Tooltip>
+          )}
           
           {isAuthenticated ? (
             <>
@@ -164,13 +173,15 @@ const Navbar = () => {
                 {category.name}
               </Link>
             ))}
-            <Link
-              to="/admin/upload"
-              className="rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-secondary"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              📤 Upload Product
-            </Link>
+            {isAdmin && (
+              <Link
+                to="/admin/upload"
+                className="rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-secondary"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                📤 Upload Product
+              </Link>
+            )}
             {isAuthenticated && (
               <Link
                 to="/purchases"

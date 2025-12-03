@@ -15,10 +15,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { useNavigate } from 'react-router-dom';
 
+// Exchange rate: 1 USD = 130 KES (approximate)
+const KES_TO_USD_RATE = 130;
+
 interface ProductFormData {
   title: string;
   description: string;
-  price: string;
+  priceKes: string;
+  priceUsd: string;
   category: Category | '';
   author: string;
   format: string;
@@ -33,7 +37,8 @@ interface ProductFormData {
 const initialFormData: ProductFormData = {
   title: '',
   description: '',
-  price: '',
+  priceKes: '',
+  priceUsd: '',
   category: '',
   author: '',
   format: 'PDF',
@@ -61,7 +66,13 @@ const AdminUploadPage = () => {
   const navigate = useNavigate();
 
   const handleInputChange = (field: keyof ProductFormData, value: string | boolean | File | null) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'priceKes' && typeof value === 'string') {
+      const kesValue = parseFloat(value) || 0;
+      const usdValue = kesValue > 0 ? (kesValue / KES_TO_USD_RATE).toFixed(2) : '';
+      setFormData(prev => ({ ...prev, priceKes: value, priceUsd: usdValue }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
   };
 
   const handleTagToggle = (tag: ProductTag) => {
@@ -132,8 +143,8 @@ const AdminUploadPage = () => {
       toast({ title: 'Description required', variant: 'destructive' });
       return false;
     }
-    if (!formData.price || parseFloat(formData.price) <= 0) {
-      toast({ title: 'Valid price required', variant: 'destructive' });
+    if (!formData.priceKes || parseFloat(formData.priceKes) <= 0) {
+      toast({ title: 'Valid price in KES required', variant: 'destructive' });
       return false;
     }
     if (!formData.category) {
@@ -210,7 +221,8 @@ const AdminUploadPage = () => {
       const { error: dbError } = await supabase.from('products').insert({
         title: formData.title.trim(),
         description: formData.description.trim(),
-        price: parseFloat(formData.price),
+        price: parseFloat(formData.priceKes),
+        price_usd: formData.priceUsd ? parseFloat(formData.priceUsd) : null,
         category: formData.category,
         author: formData.author.trim(),
         format: formData.format,
@@ -314,22 +326,35 @@ const AdminUploadPage = () => {
                   </div>
 
                   <div>
-                    <Label htmlFor="price">Price (USD) *</Label>
+                    <Label htmlFor="priceKes">Price (KES) *</Label>
                     <div className="relative mt-1">
-                      <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">KSh.</span>
                       <Input
-                        id="price"
+                        id="priceKes"
                         type="number"
-                        step="0.01"
+                        step="1"
                         min="0"
-                        placeholder="29.99"
-                        value={formData.price}
-                        onChange={(e) => handleInputChange('price', e.target.value)}
-                        className="pl-10"
+                        placeholder="1000"
+                        value={formData.priceKes}
+                        onChange={(e) => handleInputChange('priceKes', e.target.value)}
+                        className="pl-12"
                       />
                     </div>
                   </div>
                 </div>
+
+                {/* USD Auto-calculated */}
+                {formData.priceUsd && (
+                  <div className="rounded-lg bg-secondary/50 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">USD Price (Auto-calculated)</span>
+                      <span className="font-semibold text-primary">${formData.priceUsd}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Exchange rate: 1 USD = {KES_TO_USD_RATE} KES
+                    </p>
+                  </div>
+                )}
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
