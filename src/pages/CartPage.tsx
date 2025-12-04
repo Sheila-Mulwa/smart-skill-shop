@@ -8,6 +8,11 @@ const CartPage = () => {
   const { items, removeFromCart, updateQuantity, getTotalPrice, clearCart } = useCart();
   const navigate = useNavigate();
   const totalPrice = getTotalPrice();
+  
+  // Calculate total USD price
+  const totalUsd = items.reduce((sum, item) => {
+    return sum + (item.product.priceUsd || 0) * item.quantity;
+  }, 0);
 
   if (items.length === 0) {
     return (
@@ -102,9 +107,16 @@ const CartPage = () => {
 
                       {/* Price & Remove */}
                       <div className="flex items-center gap-4">
-                        <span className="text-lg font-bold text-primary">
-                          KSh. {(item.product.price * item.quantity).toFixed(2)}
-                        </span>
+                        <div className="text-right">
+                          <span className="text-lg font-bold text-primary">
+                            KSh. {(item.product.price * item.quantity).toLocaleString()}
+                          </span>
+                          {item.product.priceUsd && (
+                            <span className="block text-xs text-muted-foreground">
+                              USD {(item.product.priceUsd * item.quantity).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -138,7 +150,12 @@ const CartPage = () => {
               <div className="space-y-3 border-b border-border pb-4">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal ({items.length} items)</span>
-                  <span>KSh. {totalPrice.toFixed(2)}</span>
+                  <div className="text-right">
+                    <span className="block">KSh. {totalPrice.toLocaleString()}</span>
+                    {totalUsd > 0 && (
+                      <span className="text-xs">USD {totalUsd.toFixed(2)}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>Processing Fee</span>
@@ -148,7 +165,12 @@ const CartPage = () => {
 
               <div className="flex justify-between py-4 text-lg font-semibold text-foreground">
                 <span>Total</span>
-                <span className="text-primary">KSh. {totalPrice.toFixed(2)}</span>
+                <div className="text-right">
+                  <span className="block text-primary">KSh. {totalPrice.toLocaleString()}</span>
+                  {totalUsd > 0 && (
+                    <span className="block text-sm text-muted-foreground">USD {totalUsd.toFixed(2)}</span>
+                  )}
+                </div>
               </div>
 
               <Button

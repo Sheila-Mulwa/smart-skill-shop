@@ -62,6 +62,11 @@ const CheckoutPage = () => {
   });
 
   const totalPrice = getTotalPrice();
+  
+  // Calculate total USD price
+  const totalUsd = items.reduce((sum, item) => {
+    return sum + (item.product.priceUsd || 0) * item.quantity;
+  }, 0);
 
   if (!purchaseComplete && items.length === 0) {
     navigate('/cart');
@@ -532,14 +537,22 @@ const CheckoutPage = () => {
                       <p className="font-medium text-foreground line-clamp-1">{item.product.title}</p>
                       <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
                     </div>
-                    <p className="font-medium text-foreground">KSh. {(item.product.price * item.quantity).toFixed(2)}</p>
+                    <div className="text-right">
+                      <p className="font-medium text-foreground">KSh. {(item.product.price * item.quantity).toLocaleString()}</p>
+                      {item.product.priceUsd && (
+                        <p className="text-xs text-muted-foreground">USD {(item.product.priceUsd * item.quantity).toFixed(2)}</p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
               <div className="mt-4 border-t border-border pt-4">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
-                  <span>KSh. {totalPrice.toFixed(2)}</span>
+                  <div className="text-right">
+                    <span className="block">KSh. {totalPrice.toLocaleString()}</span>
+                    {totalUsd > 0 && <span className="text-xs">USD {totalUsd.toFixed(2)}</span>}
+                  </div>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>Processing Fee</span>
@@ -548,7 +561,10 @@ const CheckoutPage = () => {
               </div>
               <div className="mt-4 flex justify-between border-t border-border pt-4 text-xl font-bold">
                 <span className="text-foreground">Total</span>
-                <span className="text-primary">KSh. {totalPrice.toFixed(2)}</span>
+                <div className="text-right">
+                  <span className="block text-primary">KSh. {totalPrice.toLocaleString()}</span>
+                  {totalUsd > 0 && <span className="block text-sm text-muted-foreground">USD {totalUsd.toFixed(2)}</span>}
+                </div>
               </div>
             </div>
           </div>
