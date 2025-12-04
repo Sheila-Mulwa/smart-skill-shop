@@ -112,9 +112,16 @@ const ProductCard = ({ product, index = 0 }: ProductCardProps) => {
         </div>
 
         <div className="mt-auto flex items-center justify-between">
-          <p className="text-2xl font-bold text-primary">
-            KSh. {product.price.toFixed(2)}
-          </p>
+          <div>
+            <p className="text-xl font-bold text-primary">
+              KSh. {product.price.toLocaleString()}
+            </p>
+            {product.priceUsd && (
+              <p className="text-sm text-muted-foreground">
+                USD {product.priceUsd.toFixed(2)}
+              </p>
+            )}
+          </div>
           <Button
             variant={inCart ? 'secondary' : 'default'}
             size="sm"

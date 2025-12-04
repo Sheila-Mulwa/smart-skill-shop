@@ -12,18 +12,19 @@ import { useAuth } from '@/context/AuthContext';
 import { signUpSchema, signInSchema, resetPasswordSchema } from '@/lib/validations';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-type AuthMode = 'login' | 'signup' | 'forgot-password';
+type AuthMode = 'login' | 'signup' | 'forgot-password' | 'update-password';
 type AuthMethod = 'email' | 'phone';
 
 const AuthPage = () => {
   const [searchParams] = useSearchParams();
-  const initialMode = searchParams.get('mode') === 'reset' ? 'login' : 'login';
+  const isResetMode = searchParams.get('mode') === 'reset';
   
-  const [mode, setMode] = useState<AuthMode>(initialMode);
+  const [mode, setMode] = useState<AuthMode>(isResetMode ? 'update-password' : 'login');
   const [authMethod, setAuthMethod] = useState<AuthMethod>('email');
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -32,18 +33,29 @@ const AuthPage = () => {
   const [resetSent, setResetSent] = useState(false);
   
   const navigate = useNavigate();
-  const { user, signUp, signIn, signInWithGoogle, signInWithPhone, verifyPhoneOtp, resetPassword } = useAuth();
+  const { user, signUp, signIn, signInWithGoogle, signInWithPhone, verifyPhoneOtp, resetPassword, updatePassword } = useAuth();
 
-  // Redirect if already logged in
+  // Redirect if already logged in (except for password update mode)
   useEffect(() => {
-    if (user) {
+    if (user && mode !== 'update-password') {
       navigate('/');
     }
-  }, [user, navigate]);
+  }, [user, navigate, mode]);
 
   const validateForm = () => {
     setErrors({});
     try {
+      if (mode === 'update-password') {
+        if (!password || password.length < 8) {
+          setErrors({ password: 'Password must be at least 8 characters' });
+          return false;
+        }
+        if (password !== confirmPassword) {
+          setErrors({ confirmPassword: 'Passwords do not match' });
+          return false;
+        }
+        return true;
+      }
       if (authMethod === 'email') {
         if (mode === 'signup') {
           signUpSchema.parse({ email, password, name });
@@ -209,6 +221,22 @@ const AuthPage = () => {
             description: 'Check your email for password reset instructions.',
           });
         }
+      } else if (mode === 'update-password') {
+        const { error } = await updatePassword(password);
+        
+        if (error) {
+          toast({
+            title: 'Password update failed',
+            description: error.message,
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Password updated!',
+            description: 'Your password has been successfully changed.',
+          });
+          navigate('/');
+        }
       }
     } catch (error: any) {
       toast({
@@ -231,16 +259,18 @@ const AuthPage = () => {
               {mode === 'login' && 'Welcome Back'}
               {mode === 'signup' && 'Create Account'}
               {mode === 'forgot-password' && 'Reset Password'}
+              {mode === 'update-password' && 'Set New Password'}
             </h1>
             <p className="text-muted-foreground">
               {mode === 'login' && 'Sign in to access your purchases'}
               {mode === 'signup' && 'Join us and start your learning journey'}
               {mode === 'forgot-password' && 'Enter your email to receive reset instructions'}
+              {mode === 'update-password' && 'Enter your new password below'}
             </p>
           </div>
 
           {/* Toggle */}
-          {mode !== 'forgot-password' && (
+          {mode !== 'forgot-password' && mode !== 'update-password' && (
             <div className="mb-8 flex rounded-lg bg-secondary p-1">
               <button
                 type="button"
@@ -416,6 +446,80 @@ const AuthPage = () => {
                   Change Phone Number
                 </Button>
               )}
+            </form>
+          ) : mode === 'update-password' ? (
+            /* Update Password Form */
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="password">New Password</Label>
+                <div className="relative mt-1">
+                  <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setErrors({ ...errors, password: '' });
+                    }}
+                    className={cn('pl-10', errors.password && 'border-destructive')}
+                  />
+                </div>
+                {errors.password && (
+                  <p className="mt-1 text-sm text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.password}
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Must be at least 8 characters
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                <div className="relative mt-1">
+                  <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      setErrors({ ...errors, confirmPassword: '' });
+                    }}
+                    className={cn('pl-10', errors.confirmPassword && 'border-destructive')}
+                  />
+                </div>
+                {errors.confirmPassword && (
+                  <p className="mt-1 text-sm text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.confirmPassword}
+                  </p>
+                )}
+              </div>
+
+              <Button
+                type="submit"
+                variant="hero"
+                size="xl"
+                className="w-full"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    Update Password
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </>
+                )}
+              </Button>
             </form>
           ) : (
             /* Email Auth Form */

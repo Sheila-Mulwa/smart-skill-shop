@@ -177,10 +177,15 @@ const ProductPage = () => {
 
             {/* Price and CTA */}
             <div className="mt-auto space-y-4">
-              <div className="flex items-baseline gap-2">
+              <div className="flex items-baseline gap-3">
                 <span className="text-4xl font-bold text-primary">
-                  KSh. {product.price.toFixed(2)}
+                  KSh. {product.price.toLocaleString()}
                 </span>
+                {product.priceUsd && (
+                  <span className="text-xl text-muted-foreground">
+                    | USD {product.priceUsd.toFixed(2)}
+                  </span>
+                )}
               </div>
 
               <div className="flex gap-3">
