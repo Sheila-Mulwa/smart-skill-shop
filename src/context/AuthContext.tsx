@@ -12,6 +12,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<{ error: any }>;
   signInWithPhone: (phone: string) => Promise<{ error: any }>;
   verifyPhoneOtp: (phone: string, otp: string) => Promise<{ error: any }>;
+  signInWithMagicLink: (email: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: any }>;
   updatePassword: (newPassword: string) => Promise<{ error: any }>;
@@ -99,6 +100,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error };
   };
 
+  const signInWithMagicLink = async (email: string) => {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/`,
+      }
+    });
+    
+    return { error };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
@@ -131,6 +143,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     signInWithGoogle,
     signInWithPhone,
     verifyPhoneOtp,
+    signInWithMagicLink,
     signOut,
     resetPassword,
     updatePassword,
