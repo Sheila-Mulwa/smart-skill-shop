@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Download, FileText, Calendar } from 'lucide-react';
+import { Download, FileText, Calendar, Loader2 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
+import { useSecureDownload } from '@/hooks/useSecureDownload';
 
 interface Purchase {
   id: string;
@@ -28,6 +29,7 @@ const PurchasesPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { downloadProduct, isDownloading, downloadingId } = useSecureDownload();
 
   useEffect(() => {
     if (!user) {
@@ -74,30 +76,8 @@ const PurchasesPage = () => {
     fetchPurchases();
   }, [user, navigate]);
 
-  const handleDownload = async (pdfUrl: string, productTitle: string) => {
-    try {
-      // Get signed URL for the PDF
-      const { data, error } = await supabase.storage
-        .from('products-pdfs')
-        .createSignedUrl(pdfUrl, 3600); // 1 hour expiry
-
-      if (error) throw error;
-
-      // Open in new tab for download
-      window.open(data.signedUrl, '_blank');
-      
-      toast({
-        title: 'Download started',
-        description: `Downloading "${productTitle}"`,
-      });
-    } catch (error) {
-      console.error('Error downloading:', error);
-      toast({
-        title: 'Download failed',
-        description: 'Could not download the file. Please try again.',
-        variant: 'destructive',
-      });
-    }
+  const handleDownload = async (productId: string, productTitle: string) => {
+    await downloadProduct(productId, productTitle);
   };
 
   if (isLoading) {
@@ -176,13 +156,21 @@ const PurchasesPage = () => {
                     <Button
                       size="sm"
                       variant="default"
-                      onClick={() =>
-                        handleDownload(purchase.product.pdf_url, purchase.product.title)
-                      }
+                      onClick={() => handleDownload(purchase.product.id, purchase.product.title)}
+                      disabled={isDownloading && downloadingId === purchase.product.id}
                       className="gap-2"
                     >
-                      <Download className="h-4 w-4" />
-                      Download
+                      {isDownloading && downloadingId === purchase.product.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Downloading...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4" />
+                          Download
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>

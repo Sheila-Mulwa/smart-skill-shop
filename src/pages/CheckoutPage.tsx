@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, Smartphone, Building2, CheckCircle, Lock, Download } from 'lucide-react';
+import { CreditCard, Smartphone, Building2, CheckCircle, Lock, Download, Loader2 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { useSecureDownload } from '@/hooks/useSecureDownload';
 
 type PaymentMethod = 'mpesa' | 'card' | 'paypal';
 
@@ -43,7 +44,7 @@ const CheckoutPage = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [purchasedProducts, setPurchasedProducts] = useState<PurchasedProduct[]>([]);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const { downloadProduct, isDownloading, downloadingId } = useSecureDownload();
   
   const [cardDetails, setCardDetails] = useState<CardDetails>({
     cardNumber: '',
@@ -185,36 +186,8 @@ const CheckoutPage = () => {
     return true;
   };
 
-  const handleDownload = async (productId: string, pdfUrl: string, title: string) => {
-    setDownloadingId(productId);
-    try {
-      const { data, error } = await supabase.storage
-        .from('products-pdfs')
-        .createSignedUrl(pdfUrl, 3600);
-
-      if (error) throw error;
-
-      const link = document.createElement('a');
-      link.href = data.signedUrl;
-      link.download = `${title}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      toast({
-        title: 'Download Started',
-        description: `${title} is being downloaded.`,
-      });
-    } catch (error) {
-      console.error('Download error:', error);
-      toast({
-        title: 'Download Failed',
-        description: 'Unable to download file. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setDownloadingId(null);
-    }
+  const handleDownload = async (productId: string, title: string) => {
+    await downloadProduct(productId, title);
   };
 
   const handleCheckout = async (e: React.FormEvent) => {
@@ -312,12 +285,21 @@ const CheckoutPage = () => {
                 >
                   <span className="font-medium text-foreground">{product.title}</span>
                   <Button
-                    onClick={() => handleDownload(product.id, product.pdf_url, product.title)}
-                    disabled={downloadingId === product.id}
+                    onClick={() => handleDownload(product.id, product.title)}
+                    disabled={isDownloading && downloadingId === product.id}
                     className="gap-2"
                   >
-                    <Download className="h-4 w-4" />
-                    {downloadingId === product.id ? 'Downloading...' : 'Download'}
+                    {isDownloading && downloadingId === product.id ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4" />
+                        Download
+                      </>
+                    )}
                   </Button>
                 </div>
               ))}
