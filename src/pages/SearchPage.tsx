@@ -4,6 +4,7 @@ import { Search, Loader2 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import ProductCard from '@/components/products/ProductCard';
 import { searchProducts } from '@/hooks/useProducts';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 import type { Product } from '@/types/product';
 
 const SearchPage = () => {
@@ -11,6 +12,7 @@ const SearchPage = () => {
   const query = searchParams.get('q') || '';
   const [results, setResults] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const { rate: exchangeRate } = useExchangeRate();
 
   useEffect(() => {
     const performSearch = async () => {
@@ -52,7 +54,7 @@ const SearchPage = () => {
         ) : results.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {results.map((product, index) => (
-              <ProductCard key={product.id} product={product} index={index} />
+              <ProductCard key={product.id} product={product} index={index} exchangeRate={exchangeRate} />
             ))}
           </div>
         ) : (

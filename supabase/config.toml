@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.secure-pdf-download]
 verify_jwt = false
+
+[functions.get-exchange-rate]
+verify_jwt = false

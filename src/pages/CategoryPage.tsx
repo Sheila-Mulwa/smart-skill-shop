@@ -7,6 +7,7 @@ import { categoryDescriptions } from '@/data/categoryDescriptions';
 import { Apple, Brain, Dumbbell, Laptop, Briefcase, Sparkles, LucideIcon, CheckCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 import type { Product } from '@/types/product';
 
 const iconMap: Record<string, LucideIcon> = {
@@ -22,6 +23,7 @@ const CategoryPage = () => {
   const { categoryId } = useParams<{ categoryId: string }>();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const { rate: exchangeRate } = useExchangeRate();
   
   const category = categories.find((c) => c.id === categoryId);
   const Icon = category ? iconMap[category.icon] || Sparkles : Sparkles;
@@ -139,7 +141,7 @@ const CategoryPage = () => {
           ) : products.length > 0 ? (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {products.map((product, index) => (
-                <ProductCard key={product.id} product={product} index={index} />
+                <ProductCard key={product.id} product={product} index={index} exchangeRate={exchangeRate} />
               ))}
             </div>
           ) : (

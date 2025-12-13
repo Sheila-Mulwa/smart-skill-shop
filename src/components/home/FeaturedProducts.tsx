@@ -4,11 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 import type { Product } from '@/types/product';
 
 const FeaturedProducts = () => {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const { rate: exchangeRate } = useExchangeRate();
 
   useEffect(() => {
     const fetchFeaturedProducts = async () => {
@@ -117,7 +119,7 @@ const FeaturedProducts = () => {
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {featuredProducts.map((product, index) => (
-            <ProductCard key={product.id} product={product} index={index} />
+            <ProductCard key={product.id} product={product} index={index} exchangeRate={exchangeRate} />
           ))}
         </div>
 

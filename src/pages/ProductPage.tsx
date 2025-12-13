@@ -6,6 +6,7 @@ import { useProduct, Product } from '@/hooks/useProducts';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSecureDownload } from '@/hooks/useSecureDownload';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { cn } from '@/lib/utils';
 import { categories } from '@/data/products';
 import { useState, useEffect } from 'react';
@@ -44,6 +45,7 @@ const ProductPage = () => {
   const { addToCart, isInCart } = useCart();
   const { user, isAuthenticated } = useAuth();
   const { downloadProduct, isDownloading, downloadingId } = useSecureDownload();
+  const { rate: exchangeRate } = useExchangeRate();
   const [hasPurchased, setHasPurchased] = useState(false);
   const [checkingPurchase, setCheckingPurchase] = useState(false);
 
@@ -244,13 +246,8 @@ const ProductPage = () => {
             <div className="mt-auto space-y-4">
               <div className="flex items-baseline gap-3">
                 <span className="text-4xl font-bold text-primary">
-                  KSh. {product.price.toLocaleString()}
+                  KSh. {product.price.toLocaleString()} | USD {(product.price * exchangeRate).toFixed(2)}
                 </span>
-                {product.priceUsd && (
-                  <span className="text-xl text-muted-foreground">
-                    | USD {product.priceUsd.toFixed(2)}
-                  </span>
-                )}
               </div>
 
               <div className="flex gap-3">
