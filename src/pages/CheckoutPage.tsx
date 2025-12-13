@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, Smartphone, Building2, CheckCircle, Lock, Download, Loader2 } from 'lucide-react';
+import { Smartphone, CheckCircle, Lock, Download, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,22 +13,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSecureDownload } from '@/hooks/useSecureDownload';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 
-type PaymentMethod = 'mpesa' | 'card' | 'paypal';
-
-interface CardDetails {
-  cardNumber: string;
-  cardHolder: string;
-  expiryDate: string;
-  cvv: string;
-}
+type PaymentMethod = 'mpesa';
 
 interface MpesaDetails {
   phone: string;
-}
-
-interface PayPalDetails {
-  email: string;
-  password: string;
 }
 
 interface PurchasedProduct {
@@ -45,23 +33,12 @@ const CheckoutPage = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [purchasedProducts, setPurchasedProducts] = useState<PurchasedProduct[]>([]);
+  const [pendingIntegration, setPendingIntegration] = useState(false);
   const { downloadProduct, isDownloading, downloadingId } = useSecureDownload();
   const { rate: exchangeRate } = useExchangeRate();
-  
-  const [cardDetails, setCardDetails] = useState<CardDetails>({
-    cardNumber: '',
-    cardHolder: '',
-    expiryDate: '',
-    cvv: '',
-  });
 
   const [mpesaDetails, setMpesaDetails] = useState<MpesaDetails>({
     phone: '',
-  });
-
-  const [paypalDetails, setPaypalDetails] = useState<PayPalDetails>({
-    email: '',
-    password: '',
   });
 
   const totalPrice = getTotalPrice();
@@ -69,65 +46,13 @@ const CheckoutPage = () => {
   // Calculate total USD price using real exchange rate
   const totalUsd = totalPrice * exchangeRate;
 
-  if (!purchaseComplete && items.length === 0) {
+  if (!purchaseComplete && !pendingIntegration && items.length === 0) {
     navigate('/cart');
     return null;
   }
 
-  const formatCardNumber = (value: string) => {
-    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    const matches = v.match(/\d{4,16}/g);
-    const match = (matches && matches[0]) || '';
-    const parts = [];
-    for (let i = 0, len = match.length; i < len; i += 4) {
-      parts.push(match.substring(i, i + 4));
-    }
-    return parts.length ? parts.join(' ') : v;
-  };
-
-  const formatExpiryDate = (value: string) => {
-    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    if (v.length >= 2) {
-      return v.substring(0, 2) + '/' + v.substring(2, 4);
-    }
-    return v;
-  };
-
   const formatPhoneNumber = (value: string) => {
     return value.replace(/[^0-9+]/gi, '');
-  };
-
-  const handleCardChange = (field: keyof CardDetails, value: string) => {
-    let formattedValue = value;
-    if (field === 'cardNumber') {
-      formattedValue = formatCardNumber(value);
-    } else if (field === 'expiryDate') {
-      formattedValue = formatExpiryDate(value);
-    } else if (field === 'cvv') {
-      formattedValue = value.replace(/[^0-9]/gi, '').substring(0, 4);
-    }
-    setCardDetails((prev) => ({ ...prev, [field]: formattedValue }));
-  };
-
-  const validateCardDetails = () => {
-    const { cardNumber, cardHolder, expiryDate, cvv } = cardDetails;
-    if (cardNumber.replace(/\s/g, '').length < 16) {
-      toast({ title: 'Invalid card number', description: 'Please enter a valid 16-digit card number', variant: 'destructive' });
-      return false;
-    }
-    if (!cardHolder.trim()) {
-      toast({ title: 'Missing cardholder name', description: 'Please enter the cardholder name', variant: 'destructive' });
-      return false;
-    }
-    if (expiryDate.length < 5) {
-      toast({ title: 'Invalid expiry date', description: 'Please enter a valid expiry date (MM/YY)', variant: 'destructive' });
-      return false;
-    }
-    if (cvv.length < 3) {
-      toast({ title: 'Invalid CVV', description: 'Please enter a valid CVV (3-4 digits)', variant: 'destructive' });
-      return false;
-    }
-    return true;
   };
 
   const validateMpesaDetails = () => {
@@ -136,53 +61,6 @@ const CheckoutPage = () => {
       toast({ title: 'Invalid phone number', description: 'Please enter a valid M-Pesa phone number', variant: 'destructive' });
       return false;
     }
-    return true;
-  };
-
-  const validatePayPalDetails = () => {
-    if (!paypalDetails.email || !paypalDetails.email.includes('@')) {
-      toast({ title: 'Invalid PayPal email', description: 'Please enter a valid PayPal email address', variant: 'destructive' });
-      return false;
-    }
-    if (!paypalDetails.password || paypalDetails.password.length < 6) {
-      toast({ title: 'Invalid password', description: 'Please enter your PayPal password', variant: 'destructive' });
-      return false;
-    }
-    return true;
-  };
-
-  const processCardPayment = async () => {
-    if (!validateCardDetails()) return false;
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    toast({
-      title: 'Card Payment Successful!',
-      description: `Payment of KSh. ${totalPrice.toFixed(2)} processed successfully.`,
-    });
-    return true;
-  };
-
-  const processMpesaPayment = async () => {
-    if (!validateMpesaDetails()) return false;
-    const phone = mpesaDetails.phone;
-    toast({
-      title: 'M-Pesa STK Push Sent',
-      description: `Check your phone ${phone} for the M-Pesa prompt. Enter your PIN to complete payment.`,
-    });
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    toast({
-      title: 'M-Pesa Payment Successful!',
-      description: `KSh. ${totalPrice.toFixed(0)} received from ${phone}.`,
-    });
-    return true;
-  };
-
-  const processPayPalPayment = async () => {
-    if (!validatePayPalDetails()) return false;
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    toast({
-      title: 'PayPal Payment Successful!',
-      description: `Payment of KSh. ${totalPrice.toFixed(2)} completed via PayPal.`,
-    });
     return true;
   };
 
@@ -198,36 +76,52 @@ const CheckoutPage = () => {
       navigate('/auth');
       return;
     }
+
+    // Validate M-Pesa details
+    if (!validateMpesaDetails()) {
+      return;
+    }
     
     setIsProcessing(true);
-    let success = false;
     
     try {
-      switch (paymentMethod) {
-        case 'card':
-          success = await processCardPayment();
-          break;
-        case 'mpesa':
-          success = await processMpesaPayment();
-          break;
-        case 'paypal':
-          success = await processPayPalPayment();
-          break;
+      // Get the current session for auth
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({ title: 'Session expired', description: 'Please login again', variant: 'destructive' });
+        navigate('/auth');
+        return;
       }
 
-      if (success) {
-        const purchasePromises = items.map(item => 
-          supabase.from('purchases').insert({
-            user_id: user.id,
+      // Call the secure payment processing edge function
+      const { data, error } = await supabase.functions.invoke('process-payment', {
+        body: {
+          payment_method: paymentMethod,
+          items: items.map(item => ({
             product_id: item.product.id,
             amount: item.product.price * item.quantity,
-            payment_method: paymentMethod,
-            transaction_id: `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          })
-        );
+            quantity: item.quantity,
+          })),
+          payment_details: {
+            phone: mpesaDetails.phone,
+          },
+        },
+      });
 
-        await Promise.all(purchasePromises);
+      if (error) {
+        console.error('Payment error:', error);
+        toast({
+          title: 'Payment Failed',
+          description: error.message || 'Something went wrong. Please try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
 
+      console.log('Payment response:', data);
+
+      if (data.success) {
+        // Payment was successful - products are unlocked
         const products: PurchasedProduct[] = items.map(item => ({
           id: item.product.id,
           title: item.product.title,
@@ -242,6 +136,19 @@ const CheckoutPage = () => {
           title: 'Purchase Complete!',
           description: 'Your products are ready for download below.',
         });
+      } else if (data.status === 'pending_integration') {
+        // Payment integration is pending
+        setPendingIntegration(true);
+        toast({
+          title: 'Payment Processing Required',
+          description: data.message || 'Payment integration is being set up. Please contact support.',
+        });
+      } else {
+        toast({
+          title: 'Payment Not Completed',
+          description: data.message || 'Payment could not be processed. Please try again.',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Checkout error:', error);
@@ -255,11 +162,43 @@ const CheckoutPage = () => {
     }
   };
 
-  const paymentOptions = [
-    { id: 'mpesa' as const, name: 'M-Pesa', description: 'Pay with M-Pesa mobile money', icon: Smartphone },
-    { id: 'card' as const, name: 'Card Payment', description: 'Visa, Mastercard, Amex', icon: CreditCard },
-    { id: 'paypal' as const, name: 'PayPal', description: 'Pay with PayPal account', icon: Building2 },
-  ];
+  // Show pending integration message
+  if (pendingIntegration) {
+    return (
+      <Layout>
+        <div className="container py-12">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="mb-6 flex justify-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-yellow-100">
+                <AlertTriangle className="h-10 w-10 text-yellow-600" />
+              </div>
+            </div>
+            <h1 className="mb-4 text-3xl font-bold text-foreground">Payment Setup In Progress</h1>
+            <p className="mb-4 text-muted-foreground">
+              Our payment system is currently being configured. Your order has been noted.
+            </p>
+            <div className="rounded-xl border border-border bg-card p-6 text-left">
+              <h2 className="mb-4 text-lg font-semibold text-foreground">What happens next?</h2>
+              <ul className="space-y-2 text-muted-foreground">
+                <li>• Our team is setting up secure M-Pesa integration</li>
+                <li>• You can contact us directly to complete your purchase</li>
+                <li>• Email: pointresearchlimited@gmail.com</li>
+                <li>• Once payment is confirmed, you'll get instant access</li>
+              </ul>
+            </div>
+            <div className="mt-8 flex justify-center gap-4">
+              <Button variant="outline" onClick={() => navigate('/contact')}>
+                Contact Support
+              </Button>
+              <Button onClick={() => navigate('/')}>
+                Continue Browsing
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   if (purchaseComplete) {
     return (
@@ -329,166 +268,79 @@ const CheckoutPage = () => {
             <form onSubmit={handleCheckout} className="space-y-6">
               <div className="rounded-xl border border-border bg-card p-6">
                 <h2 className="mb-4 text-lg font-semibold text-foreground">Payment Method</h2>
+                
+                {/* M-Pesa - Currently the only active method */}
                 <div className="space-y-3">
-                  {paymentOptions.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => setPaymentMethod(option.id)}
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('mpesa')}
+                    className={cn(
+                      'flex w-full items-center gap-4 rounded-lg border p-4 text-left transition-all',
+                      paymentMethod === 'mpesa'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    <div
                       className={cn(
-                        'flex w-full items-center gap-4 rounded-lg border p-4 text-left transition-all',
-                        paymentMethod === option.id
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:border-primary/50'
+                        'flex h-10 w-10 items-center justify-center rounded-lg',
+                        paymentMethod === 'mpesa'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-muted-foreground'
                       )}
                     >
-                      <div
-                        className={cn(
-                          'flex h-10 w-10 items-center justify-center rounded-lg',
-                          paymentMethod === option.id
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary text-muted-foreground'
-                        )}
-                      >
-                        <option.icon className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-foreground">{option.name}</p>
-                        <p className="text-sm text-muted-foreground">{option.description}</p>
-                      </div>
-                      {paymentMethod === option.id && (
-                        <CheckCircle className="h-5 w-5 text-primary" />
-                      )}
-                    </button>
-                  ))}
+                      <Smartphone className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-foreground">M-Pesa</p>
+                      <p className="text-sm text-muted-foreground">Pay with M-Pesa mobile money</p>
+                    </div>
+                    {paymentMethod === 'mpesa' && (
+                      <CheckCircle className="h-5 w-5 text-primary" />
+                    )}
+                  </button>
                 </div>
 
-                {paymentMethod === 'mpesa' && (
-                  <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Smartphone className="h-4 w-4" />
-                      <span>Enter your M-Pesa registered phone number</span>
-                    </div>
-                    <div>
-                      <Label htmlFor="mpesa-phone">M-Pesa Phone Number</Label>
-                      <Input
-                        id="mpesa-phone"
-                        type="tel"
-                        placeholder="0712345678 or +254712345678"
-                        value={mpesaDetails.phone}
-                        onChange={(e) => setMpesaDetails({ phone: formatPhoneNumber(e.target.value) })}
-                        required
-                        className="mt-1"
-                        maxLength={13}
-                      />
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        An STK push will be sent to this number. Amount: KSh. {totalPrice.toFixed(0)}
+                {/* M-Pesa Details */}
+                <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Smartphone className="h-4 w-4" />
+                    <span>Enter your M-Pesa registered phone number</span>
+                  </div>
+                  <div>
+                    <Label htmlFor="mpesa-phone">M-Pesa Phone Number</Label>
+                    <Input
+                      id="mpesa-phone"
+                      type="tel"
+                      placeholder="0712345678 or +254712345678"
+                      value={mpesaDetails.phone}
+                      onChange={(e) => setMpesaDetails({ phone: formatPhoneNumber(e.target.value) })}
+                      required
+                      className="mt-1"
+                      maxLength={13}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      An STK push will be sent to this number. Amount: KSh. {totalPrice.toFixed(0)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Notice about other payment methods */}
+                <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="font-medium text-yellow-800">Payment Integration Notice</p>
+                      <p className="text-yellow-700 mt-1">
+                        Card and PayPal payments are coming soon. For now, please use M-Pesa or contact us at{' '}
+                        <a href="mailto:pointresearchlimited@gmail.com" className="underline">
+                          pointresearchlimited@gmail.com
+                        </a>{' '}
+                        for alternative payment options.
                       </p>
                     </div>
                   </div>
-                )}
-
-                {paymentMethod === 'card' && (
-                  <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Lock className="h-4 w-4" />
-                      <span>Your card details are secure and encrypted</span>
-                    </div>
-                    <div>
-                      <Label htmlFor="card-number">Card Number</Label>
-                      <Input
-                        id="card-number"
-                        type="text"
-                        placeholder="1234 5678 9012 3456"
-                        value={cardDetails.cardNumber}
-                        onChange={(e) => handleCardChange('cardNumber', e.target.value)}
-                        required
-                        className="mt-1 font-mono"
-                        maxLength={19}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="card-holder">Cardholder Name</Label>
-                      <Input
-                        id="card-holder"
-                        type="text"
-                        placeholder="John Doe"
-                        value={cardDetails.cardHolder}
-                        onChange={(e) => handleCardChange('cardHolder', e.target.value)}
-                        required
-                        className="mt-1"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="expiry-date">Expiry Date</Label>
-                        <Input
-                          id="expiry-date"
-                          type="text"
-                          placeholder="MM/YY"
-                          value={cardDetails.expiryDate}
-                          onChange={(e) => handleCardChange('expiryDate', e.target.value)}
-                          required
-                          className="mt-1"
-                          maxLength={5}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="cvv">CVV</Label>
-                        <Input
-                          id="cvv"
-                          type="password"
-                          placeholder="123"
-                          value={cardDetails.cvv}
-                          onChange={(e) => handleCardChange('cvv', e.target.value)}
-                          required
-                          className="mt-1"
-                          maxLength={4}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/100px-Visa_Inc._logo.svg.png" alt="Visa" className="h-6 object-contain" />
-                      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/100px-Mastercard-logo.svg.png" alt="Mastercard" className="h-6 object-contain" />
-                      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/American_Express_logo_%282018%29.svg/100px-American_Express_logo_%282018%29.svg.png" alt="Amex" className="h-6 object-contain" />
-                    </div>
-                  </div>
-                )}
-
-                {paymentMethod === 'paypal' && (
-                  <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
-                    <div className="flex items-center justify-center gap-2 py-2">
-                      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/PayPal.svg/200px-PayPal.svg.png" alt="PayPal" className="h-8 object-contain" />
-                    </div>
-                    <div>
-                      <Label htmlFor="paypal-email">PayPal Email</Label>
-                      <Input
-                        id="paypal-email"
-                        type="email"
-                        placeholder="your@paypal-email.com"
-                        value={paypalDetails.email}
-                        onChange={(e) => setPaypalDetails((prev) => ({ ...prev, email: e.target.value }))}
-                        required
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="paypal-password">PayPal Password</Label>
-                      <Input
-                        id="paypal-password"
-                        type="password"
-                        placeholder="Enter your PayPal password"
-                        value={paypalDetails.password}
-                        onChange={(e) => setPaypalDetails((prev) => ({ ...prev, password: e.target.value }))}
-                        required
-                        className="mt-1"
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      You'll be securely logged into PayPal to complete your payment.
-                    </p>
-                  </div>
-                )}
+                </div>
               </div>
 
               <Button type="submit" variant="hero" size="xl" className="w-full" disabled={isProcessing}>
@@ -504,7 +356,7 @@ const CheckoutPage = () => {
 
               <p className="text-center text-xs text-muted-foreground">
                 <Lock className="mr-1 inline h-3 w-3" />
-                Your payment information is secure and encrypted
+                Your payment is processed securely on our servers
               </p>
             </form>
           </div>
