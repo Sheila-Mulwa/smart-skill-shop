@@ -7,7 +7,8 @@ export type Category =
   | 'social-media'
   | 'spirituality'
   | 'career'
-  | 'diaspora';
+  | 'diaspora'
+  | string; // Allow dynamic categories from database
 
 export type ProductTag = 'trending' | 'bestseller' | 'beginner' | 'advanced' | 'all-levels' | 'new' | 'popular';
 
@@ -24,10 +25,11 @@ export interface Product {
   author: string;
   format: string;
   pages?: number;
-  tags?: ProductTag[];
+  tags?: ProductTag[] | string[];
   featured?: boolean;
   level?: 'beginner' | 'advanced' | 'all-levels';
   pdfUrl?: string;
+  downloads?: number;
 }
 
 export interface CartItem {
@@ -36,7 +38,7 @@ export interface CartItem {
 }
 
 export interface CategoryInfo {
-  id: Category;
+  id: string;
   name: string;
   description: string;
   icon: string;

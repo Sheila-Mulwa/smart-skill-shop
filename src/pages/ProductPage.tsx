@@ -1,13 +1,18 @@
 import { useParams, Link } from 'react-router-dom';
-import { Star, ShoppingCart, Download, FileText, User, ChevronLeft, Award, TrendingUp } from 'lucide-react';
+import { Star, ShoppingCart, Download, Lock, User, ChevronLeft, Award, Loader2 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
-import { getProductById, categories } from '@/data/products';
+import { useProduct, Product } from '@/hooks/useProducts';
 import { useCart } from '@/context/CartContext';
+import { useAuth } from '@/context/AuthContext';
+import { useSecureDownload } from '@/hooks/useSecureDownload';
 import { cn } from '@/lib/utils';
-import { ProductTag } from '@/types/product';
+import { categories } from '@/data/products';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import type { Product as CartProduct } from '@/types/product';
 
-const tagStyles: Record<ProductTag, string> = {
+const tagStyles: Record<string, string> = {
   trending: 'bg-orange-500 text-white',
   bestseller: 'bg-green-500 text-white',
   beginner: 'bg-blue-500 text-white',
@@ -17,7 +22,7 @@ const tagStyles: Record<ProductTag, string> = {
   popular: 'bg-pink-500 text-white',
 };
 
-const tagLabels: Record<ProductTag, string> = {
+const tagLabels: Record<string, string> = {
   trending: '🔥 Trending',
   bestseller: '⭐ Bestseller',
   beginner: 'Beginner Friendly',
@@ -27,7 +32,7 @@ const tagLabels: Record<ProductTag, string> = {
   popular: '💎 Popular',
 };
 
-const levelStyles = {
+const levelStyles: Record<string, string> = {
   beginner: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
   advanced: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
   'all-levels': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
@@ -35,19 +40,70 @@ const levelStyles = {
 
 const ProductPage = () => {
   const { productId } = useParams<{ productId: string }>();
-  const product = productId ? getProductById(productId) : undefined;
+  const { product, loading, error } = useProduct(productId);
   const { addToCart, isInCart } = useCart();
+  const { user, isAuthenticated } = useAuth();
+  const { downloadProduct, isDownloading, downloadingId } = useSecureDownload();
+  const [hasPurchased, setHasPurchased] = useState(false);
+  const [checkingPurchase, setCheckingPurchase] = useState(false);
+
   const inCart = product ? isInCart(product.id) : false;
   const category = product
     ? categories.find((c) => c.id === product.category)
     : undefined;
 
-  if (!product) {
+  // Check if user has purchased this product
+  useEffect(() => {
+    const checkPurchase = async () => {
+      if (!user || !productId) {
+        setHasPurchased(false);
+        return;
+      }
+
+      setCheckingPurchase(true);
+      try {
+        const { data, error } = await supabase
+          .from('purchases')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('product_id', productId)
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          setHasPurchased(true);
+        } else {
+          setHasPurchased(false);
+        }
+      } catch (err) {
+        console.error('Error checking purchase:', err);
+      } finally {
+        setCheckingPurchase(false);
+      }
+    };
+
+    checkPurchase();
+  }, [user, productId]);
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="container py-16 text-center">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+          <p className="mt-4 text-muted-foreground">Loading product...</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error || !product) {
     return (
       <Layout>
         <div className="container py-16 text-center">
           <h1 className="text-2xl font-bold text-foreground">Product not found</h1>
-          <Link to="/" className="mt-4 text-primary hover:underline">
+          <p className="mt-2 text-muted-foreground">
+            The product you're looking for doesn't exist or has been removed.
+          </p>
+          <Link to="/" className="mt-4 inline-block text-primary hover:underline">
             Return to Home
           </Link>
         </div>
@@ -55,7 +111,16 @@ const ProductPage = () => {
     );
   }
 
-  const specialTags = product.tags?.filter(tag => ['trending', 'bestseller', 'popular', 'new'].includes(tag)) || [];
+  const specialTags = product.tags?.filter(tag => 
+    ['trending', 'bestseller', 'popular', 'new'].includes(tag)
+  ) || [];
+
+  const handleDownload = async () => {
+    if (!isAuthenticated) {
+      return;
+    }
+    await downloadProduct(product.id, product.title);
+  };
 
   return (
     <Layout>
@@ -138,7 +203,7 @@ const ProductPage = () => {
                   />
                 ))}
               </div>
-              <span className="font-medium text-foreground">{product.rating}</span>
+              <span className="font-medium text-foreground">{product.rating.toFixed(1)}</span>
               <span className="text-muted-foreground">
                 ({product.reviewCount} reviews)
               </span>
@@ -189,22 +254,52 @@ const ProductPage = () => {
               </div>
 
               <div className="flex gap-3">
-                <Button
-                  variant="hero"
-                  size="xl"
-                  className="flex-1"
-                  onClick={() => addToCart(product)}
-                  disabled={inCart}
-                >
-                  <ShoppingCart className="mr-2 h-5 w-5" />
-                  {inCart ? 'Already in Cart' : 'Add to Cart'}
-                </Button>
+                {hasPurchased ? (
+                  <Button
+                    variant="hero"
+                    size="xl"
+                    className="flex-1"
+                    onClick={handleDownload}
+                    disabled={isDownloading && downloadingId === product.id}
+                  >
+                    {isDownloading && downloadingId === product.id ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-5 w-5" />
+                        Download Now
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="hero"
+                    size="xl"
+                    className="flex-1"
+                    onClick={() => addToCart(product as CartProduct)}
+                    disabled={inCart}
+                  >
+                    <ShoppingCart className="mr-2 h-5 w-5" />
+                    {inCart ? 'Already in Cart' : 'Add to Cart'}
+                  </Button>
+                )}
               </div>
 
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Download className="h-4 w-4" />
-                <span>Secure instant download after purchase</span>
-              </div>
+              {/* Download status indicator */}
+              {hasPurchased ? (
+                <div className="flex items-center justify-center gap-2 text-sm text-green-600 dark:text-green-400">
+                  <Download className="h-4 w-4" />
+                  <span>You own this product - Download anytime</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Lock className="h-4 w-4" />
+                  <span>Secure instant download after purchase</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
