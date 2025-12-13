@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Smartphone, CheckCircle, Lock, Download, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Smartphone, CheckCircle, Lock, Download, Loader2, AlertTriangle, Building2 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,10 +13,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSecureDownload } from '@/hooks/useSecureDownload';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 
-type PaymentMethod = 'mpesa';
+type PaymentMethod = 'mpesa' | 'bank';
 
 interface MpesaDetails {
   phone: string;
+}
+
+interface BankDetails {
+  accountName: string;
+  referenceNumber: string;
 }
 
 interface PurchasedProduct {
@@ -39,6 +44,10 @@ const CheckoutPage = () => {
 
   const [mpesaDetails, setMpesaDetails] = useState<MpesaDetails>({
     phone: '',
+  });
+  const [bankDetails, setBankDetails] = useState<BankDetails>({
+    accountName: '',
+    referenceNumber: '',
   });
 
   const totalPrice = getTotalPrice();
@@ -64,6 +73,18 @@ const CheckoutPage = () => {
     return true;
   };
 
+  const validateBankDetails = () => {
+    if (!bankDetails.accountName.trim()) {
+      toast({ title: 'Account name required', description: 'Please enter the name used for the bank transfer', variant: 'destructive' });
+      return false;
+    }
+    if (!bankDetails.referenceNumber.trim()) {
+      toast({ title: 'Reference number required', description: 'Please enter the transaction/reference number', variant: 'destructive' });
+      return false;
+    }
+    return true;
+  };
+
   const handleDownload = async (productId: string, title: string) => {
     await downloadProduct(productId, title);
   };
@@ -77,8 +98,11 @@ const CheckoutPage = () => {
       return;
     }
 
-    // Validate M-Pesa details
-    if (!validateMpesaDetails()) {
+    // Validate payment details based on method
+    if (paymentMethod === 'mpesa' && !validateMpesaDetails()) {
+      return;
+    }
+    if (paymentMethod === 'bank' && !validateBankDetails()) {
       return;
     }
     
@@ -94,6 +118,10 @@ const CheckoutPage = () => {
       }
 
       // Call the secure payment processing edge function
+      const paymentDetails = paymentMethod === 'mpesa'
+        ? { phone: mpesaDetails.phone }
+        : { accountName: bankDetails.accountName, referenceNumber: bankDetails.referenceNumber };
+
       const { data, error } = await supabase.functions.invoke('process-payment', {
         body: {
           payment_method: paymentMethod,
@@ -102,9 +130,7 @@ const CheckoutPage = () => {
             amount: item.product.price * item.quantity,
             quantity: item.quantity,
           })),
-          payment_details: {
-            phone: mpesaDetails.phone,
-          },
+          payment_details: paymentDetails,
         },
       });
 
@@ -269,8 +295,9 @@ const CheckoutPage = () => {
               <div className="rounded-xl border border-border bg-card p-6">
                 <h2 className="mb-4 text-lg font-semibold text-foreground">Payment Method</h2>
                 
-                {/* M-Pesa - Currently the only active method */}
+                {/* Payment Method Selection */}
                 <div className="space-y-3">
+                  {/* M-Pesa Option */}
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('mpesa')}
@@ -299,44 +326,123 @@ const CheckoutPage = () => {
                       <CheckCircle className="h-5 w-5 text-primary" />
                     )}
                   </button>
+
+                  {/* Bank Transfer Option */}
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('bank')}
+                    className={cn(
+                      'flex w-full items-center gap-4 rounded-lg border p-4 text-left transition-all',
+                      paymentMethod === 'bank'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'flex h-10 w-10 items-center justify-center rounded-lg',
+                        paymentMethod === 'bank'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-muted-foreground'
+                      )}
+                    >
+                      <Building2 className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-foreground">Bank Transfer</p>
+                      <p className="text-sm text-muted-foreground">Pay via direct bank transfer</p>
+                    </div>
+                    {paymentMethod === 'bank' && (
+                      <CheckCircle className="h-5 w-5 text-primary" />
+                    )}
+                  </button>
                 </div>
 
                 {/* M-Pesa Details */}
-                <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Smartphone className="h-4 w-4" />
-                    <span>Enter your M-Pesa registered phone number</span>
+                {paymentMethod === 'mpesa' && (
+                  <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Smartphone className="h-4 w-4" />
+                      <span>Enter your M-Pesa registered phone number</span>
+                    </div>
+                    <div>
+                      <Label htmlFor="mpesa-phone">M-Pesa Phone Number</Label>
+                      <Input
+                        id="mpesa-phone"
+                        type="tel"
+                        placeholder="0712345678 or +254712345678"
+                        value={mpesaDetails.phone}
+                        onChange={(e) => setMpesaDetails({ phone: formatPhoneNumber(e.target.value) })}
+                        required
+                        className="mt-1"
+                        maxLength={13}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        An STK push will be sent to this number. Amount: KSh. {totalPrice.toFixed(0)}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="mpesa-phone">M-Pesa Phone Number</Label>
-                    <Input
-                      id="mpesa-phone"
-                      type="tel"
-                      placeholder="0712345678 or +254712345678"
-                      value={mpesaDetails.phone}
-                      onChange={(e) => setMpesaDetails({ phone: formatPhoneNumber(e.target.value) })}
-                      required
-                      className="mt-1"
-                      maxLength={13}
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      An STK push will be sent to this number. Amount: KSh. {totalPrice.toFixed(0)}
-                    </p>
-                  </div>
-                </div>
+                )}
 
-                {/* Notice about other payment methods */}
-                <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+                {/* Bank Transfer Details */}
+                {paymentMethod === 'bank' && (
+                  <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Building2 className="h-4 w-4" />
+                      <span>Make a bank transfer and enter details below</span>
+                    </div>
+                    
+                    {/* Bank Account Details */}
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                      <p className="font-semibold text-foreground mb-2">Transfer to:</p>
+                      <div className="space-y-1 text-sm">
+                        <p><span className="text-muted-foreground">Bank:</span> <span className="font-medium text-foreground">Equity Bank</span></p>
+                        <p><span className="text-muted-foreground">Account Name:</span> <span className="font-medium text-foreground">Point Research Kenya</span></p>
+                        <p><span className="text-muted-foreground">Account Number:</span> <span className="font-medium text-foreground">1234567890</span></p>
+                        <p><span className="text-muted-foreground">Amount:</span> <span className="font-bold text-primary">KSh. {totalPrice.toLocaleString()}</span></p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="account-name">Your Name (as on bank account)</Label>
+                      <Input
+                        id="account-name"
+                        type="text"
+                        placeholder="John Doe"
+                        value={bankDetails.accountName}
+                        onChange={(e) => setBankDetails(prev => ({ ...prev, accountName: e.target.value }))}
+                        required
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="reference-number">Transaction/Reference Number</Label>
+                      <Input
+                        id="reference-number"
+                        type="text"
+                        placeholder="e.g., TXN123456789"
+                        value={bankDetails.referenceNumber}
+                        onChange={(e) => setBankDetails(prev => ({ ...prev, referenceNumber: e.target.value }))}
+                        required
+                        className="mt-1"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Enter the transaction reference from your bank after completing the transfer
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Notice about payment verification */}
+                <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm">
-                      <p className="font-medium text-yellow-800">Payment Integration Notice</p>
-                      <p className="text-yellow-700 mt-1">
-                        Card and PayPal payments are coming soon. For now, please use M-Pesa or contact us at{' '}
-                        <a href="mailto:pointresearchlimited@gmail.com" className="underline">
-                          pointresearchlimited@gmail.com
-                        </a>{' '}
-                        for alternative payment options.
+                      <p className="font-medium text-blue-800">Payment Verification</p>
+                      <p className="text-blue-700 mt-1">
+                        {paymentMethod === 'mpesa' 
+                          ? 'You will receive an M-Pesa prompt on your phone. Enter your PIN to complete payment.'
+                          : 'After making your bank transfer, enter the transaction details above. We will verify and unlock your download.'}
                       </p>
                     </div>
                   </div>
