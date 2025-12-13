@@ -3,16 +3,16 @@ import { Trash2, Minus, Plus, ShoppingBag, ArrowRight } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 
 const CartPage = () => {
   const { items, removeFromCart, updateQuantity, getTotalPrice, clearCart } = useCart();
   const navigate = useNavigate();
+  const { rate: exchangeRate } = useExchangeRate();
   const totalPrice = getTotalPrice();
   
-  // Calculate total USD price
-  const totalUsd = items.reduce((sum, item) => {
-    return sum + (item.product.priceUsd || 0) * item.quantity;
-  }, 0);
+  // Calculate total USD price using real exchange rate
+  const totalUsd = totalPrice * exchangeRate;
 
   if (items.length === 0) {
     return (
@@ -109,13 +109,8 @@ const CartPage = () => {
                       <div className="flex items-center gap-4">
                         <div className="text-right">
                           <span className="text-lg font-bold text-primary">
-                            KSh. {(item.product.price * item.quantity).toLocaleString()}
+                            KSh. {(item.product.price * item.quantity).toLocaleString()} | USD {(item.product.price * item.quantity * exchangeRate).toFixed(2)}
                           </span>
-                          {item.product.priceUsd && (
-                            <span className="block text-xs text-muted-foreground">
-                              USD {(item.product.priceUsd * item.quantity).toFixed(2)}
-                            </span>
-                          )}
                         </div>
                         <Button
                           variant="ghost"
@@ -150,12 +145,7 @@ const CartPage = () => {
               <div className="space-y-3 border-b border-border pb-4">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal ({items.length} items)</span>
-                  <div className="text-right">
-                    <span className="block">KSh. {totalPrice.toLocaleString()}</span>
-                    {totalUsd > 0 && (
-                      <span className="text-xs">USD {totalUsd.toFixed(2)}</span>
-                    )}
-                  </div>
+                  <span>KSh. {totalPrice.toLocaleString()} | USD {totalUsd.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>Processing Fee</span>
@@ -165,12 +155,7 @@ const CartPage = () => {
 
               <div className="flex justify-between py-4 text-lg font-semibold text-foreground">
                 <span>Total</span>
-                <div className="text-right">
-                  <span className="block text-primary">KSh. {totalPrice.toLocaleString()}</span>
-                  {totalUsd > 0 && (
-                    <span className="block text-sm text-muted-foreground">USD {totalUsd.toFixed(2)}</span>
-                  )}
-                </div>
+                <span className="text-primary">KSh. {totalPrice.toLocaleString()} | USD {totalUsd.toFixed(2)}</span>
               </div>
 
               <Button

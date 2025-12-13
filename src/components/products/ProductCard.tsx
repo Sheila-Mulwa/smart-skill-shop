@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 interface ProductCardProps {
   product: Product;
   index?: number;
+  exchangeRate?: number;
 }
 
 const tagStyles: Record<ProductTag, string> = {
@@ -36,9 +37,12 @@ const levelStyles = {
   'all-levels': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
 };
 
-const ProductCard = ({ product, index = 0 }: ProductCardProps) => {
+const ProductCard = ({ product, index = 0, exchangeRate = 0.0077 }: ProductCardProps) => {
   const { addToCart, isInCart } = useCart();
   const inCart = isInCart(product.id);
+  
+  // Calculate USD price from real exchange rate
+  const usdPrice = (product.price * exchangeRate).toFixed(2);
 
   // Determine which special tags to show (trending/bestseller/popular/new)
   const specialTags = product.tags?.filter(tag => ['trending', 'bestseller', 'popular', 'new'].includes(tag)) || [];
@@ -114,7 +118,7 @@ const ProductCard = ({ product, index = 0 }: ProductCardProps) => {
         <div className="mt-auto flex items-center justify-between">
           <div>
             <p className="text-lg font-bold text-primary">
-              KSh. {product.price.toLocaleString()} | USD {(product.priceUsd || 0).toFixed(2)}
+              KSh. {product.price.toLocaleString()} | USD {usdPrice}
             </p>
           </div>
           <Button
