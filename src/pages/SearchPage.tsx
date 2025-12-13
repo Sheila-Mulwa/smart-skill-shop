@@ -1,13 +1,33 @@
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Search, Loader2 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import ProductCard from '@/components/products/ProductCard';
-import { searchProducts } from '@/data/products';
+import { searchProducts } from '@/hooks/useProducts';
+import type { Product } from '@/types/product';
 
 const SearchPage = () => {
   const [searchParams] = useSearchParams();
   const query = searchParams.get('q') || '';
-  const results = searchProducts(query);
+  const [results, setResults] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const performSearch = async () => {
+      if (!query.trim()) {
+        setResults([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      const data = await searchProducts(query);
+      setResults(data);
+      setLoading(false);
+    };
+
+    performSearch();
+  }, [query]);
 
   return (
     <Layout>
@@ -19,12 +39,17 @@ const SearchPage = () => {
             <h1 className="text-3xl font-bold text-foreground">Search Results</h1>
           </div>
           <p className="text-muted-foreground">
-            {results.length} result{results.length !== 1 ? 's' : ''} for "{query}"
+            {loading ? 'Searching...' : `${results.length} result${results.length !== 1 ? 's' : ''} for "${query}"`}
           </p>
         </div>
 
         {/* Results */}
-        {results.length > 0 ? (
+        {loading ? (
+          <div className="py-16 text-center">
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+            <p className="mt-4 text-muted-foreground">Searching products...</p>
+          </div>
+        ) : results.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {results.map((product, index) => (
               <ProductCard key={product.id} product={product} index={index} />
