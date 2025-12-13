@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Smartphone, CheckCircle, Lock, Download, Loader2, AlertTriangle, Building2 } from 'lucide-react';
+import { Smartphone, CheckCircle, Lock, Download, Loader2, AlertTriangle, CreditCard } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,15 +13,17 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSecureDownload } from '@/hooks/useSecureDownload';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 
-type PaymentMethod = 'mpesa' | 'bank';
+type PaymentMethod = 'mpesa' | 'card';
 
 interface MpesaDetails {
   phone: string;
 }
 
-interface BankDetails {
-  accountName: string;
-  referenceNumber: string;
+interface CardDetails {
+  cardNumber: string;
+  cardName: string;
+  expiryDate: string;
+  cvc: string;
 }
 
 interface PurchasedProduct {
@@ -45,9 +47,11 @@ const CheckoutPage = () => {
   const [mpesaDetails, setMpesaDetails] = useState<MpesaDetails>({
     phone: '',
   });
-  const [bankDetails, setBankDetails] = useState<BankDetails>({
-    accountName: '',
-    referenceNumber: '',
+  const [cardDetails, setCardDetails] = useState<CardDetails>({
+    cardNumber: '',
+    cardName: '',
+    expiryDate: '',
+    cvc: '',
   });
 
   const totalPrice = getTotalPrice();
@@ -73,13 +77,22 @@ const CheckoutPage = () => {
     return true;
   };
 
-  const validateBankDetails = () => {
-    if (!bankDetails.accountName.trim()) {
-      toast({ title: 'Account name required', description: 'Please enter the name used for the bank transfer', variant: 'destructive' });
+  const validateCardDetails = () => {
+    const cardNum = cardDetails.cardNumber.replace(/\s/g, '');
+    if (cardNum.length < 13 || cardNum.length > 19) {
+      toast({ title: 'Invalid card number', description: 'Please enter a valid card number', variant: 'destructive' });
       return false;
     }
-    if (!bankDetails.referenceNumber.trim()) {
-      toast({ title: 'Reference number required', description: 'Please enter the transaction/reference number', variant: 'destructive' });
+    if (!cardDetails.cardName.trim()) {
+      toast({ title: 'Name required', description: 'Please enter the name on your card', variant: 'destructive' });
+      return false;
+    }
+    if (!/^\d{2}\/\d{2}$/.test(cardDetails.expiryDate)) {
+      toast({ title: 'Invalid expiry', description: 'Please enter expiry as MM/YY', variant: 'destructive' });
+      return false;
+    }
+    if (cardDetails.cvc.length < 3 || cardDetails.cvc.length > 4) {
+      toast({ title: 'Invalid CVC', description: 'Please enter a valid CVC code', variant: 'destructive' });
       return false;
     }
     return true;
@@ -102,7 +115,7 @@ const CheckoutPage = () => {
     if (paymentMethod === 'mpesa' && !validateMpesaDetails()) {
       return;
     }
-    if (paymentMethod === 'bank' && !validateBankDetails()) {
+    if (paymentMethod === 'card' && !validateCardDetails()) {
       return;
     }
     
@@ -120,7 +133,12 @@ const CheckoutPage = () => {
       // Call the secure payment processing edge function
       const paymentDetails = paymentMethod === 'mpesa'
         ? { phone: mpesaDetails.phone }
-        : { accountName: bankDetails.accountName, referenceNumber: bankDetails.referenceNumber };
+        : { 
+            cardNumber: cardDetails.cardNumber.replace(/\s/g, ''),
+            cardName: cardDetails.cardName,
+            expiryDate: cardDetails.expiryDate,
+            cvc: cardDetails.cvc
+          };
 
       const { data, error } = await supabase.functions.invoke('process-payment', {
         body: {
@@ -327,13 +345,13 @@ const CheckoutPage = () => {
                     )}
                   </button>
 
-                  {/* Bank Transfer Option */}
+                  {/* Card Payment Option */}
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('bank')}
+                    onClick={() => setPaymentMethod('card')}
                     className={cn(
                       'flex w-full items-center gap-4 rounded-lg border p-4 text-left transition-all',
-                      paymentMethod === 'bank'
+                      paymentMethod === 'card'
                         ? 'border-primary bg-primary/5'
                         : 'border-border hover:border-primary/50'
                     )}
@@ -341,18 +359,18 @@ const CheckoutPage = () => {
                     <div
                       className={cn(
                         'flex h-10 w-10 items-center justify-center rounded-lg',
-                        paymentMethod === 'bank'
+                        paymentMethod === 'card'
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-secondary text-muted-foreground'
                       )}
                     >
-                      <Building2 className="h-5 w-5" />
+                      <CreditCard className="h-5 w-5" />
                     </div>
                     <div className="flex-1">
-                      <p className="font-medium text-foreground">Bank Transfer</p>
-                      <p className="text-sm text-muted-foreground">Pay via direct bank transfer</p>
+                      <p className="font-medium text-foreground">Debit/Credit Card</p>
+                      <p className="text-sm text-muted-foreground">Pay with Visa, Mastercard, etc.</p>
                     </div>
-                    {paymentMethod === 'bank' && (
+                    {paymentMethod === 'card' && (
                       <CheckCircle className="h-5 w-5 text-primary" />
                     )}
                   </button>
@@ -384,65 +402,94 @@ const CheckoutPage = () => {
                   </div>
                 )}
 
-                {/* Bank Transfer Details */}
-                {paymentMethod === 'bank' && (
+                {/* Card Payment Details */}
+                {paymentMethod === 'card' && (
                   <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Building2 className="h-4 w-4" />
-                      <span>Make a bank transfer and enter details below</span>
+                      <CreditCard className="h-4 w-4" />
+                      <span>Enter your card details</span>
                     </div>
                     
-                    {/* Bank Account Details */}
-                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-                      <p className="font-semibold text-foreground mb-2">Transfer to:</p>
-                      <div className="space-y-1 text-sm">
-                        <p><span className="text-muted-foreground">Bank:</span> <span className="font-medium text-foreground">Equity Bank</span></p>
-                        <p><span className="text-muted-foreground">Account Name:</span> <span className="font-medium text-foreground">Point Research Kenya</span></p>
-                        <p><span className="text-muted-foreground">Account Number:</span> <span className="font-medium text-foreground">1234567890</span></p>
-                        <p><span className="text-muted-foreground">Amount:</span> <span className="font-bold text-primary">KSh. {totalPrice.toLocaleString()}</span></p>
-                      </div>
+                    <div>
+                      <Label htmlFor="card-name">Name on Card</Label>
+                      <Input
+                        id="card-name"
+                        type="text"
+                        placeholder="John Doe"
+                        value={cardDetails.cardName}
+                        onChange={(e) => setCardDetails(prev => ({ ...prev, cardName: e.target.value }))}
+                        required
+                        className="mt-1"
+                      />
                     </div>
 
                     <div>
-                      <Label htmlFor="account-name">Your Name (as on bank account)</Label>
+                      <Label htmlFor="card-number">Card Number</Label>
                       <Input
-                        id="account-name"
+                        id="card-number"
                         type="text"
-                        placeholder="John Doe"
-                        value={bankDetails.accountName}
-                        onChange={(e) => setBankDetails(prev => ({ ...prev, accountName: e.target.value }))}
+                        placeholder="1234 5678 9012 3456"
+                        value={cardDetails.cardNumber}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/[^\d\s]/g, '').replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+                          setCardDetails(prev => ({ ...prev, cardNumber: value.slice(0, 19) }));
+                        }}
                         required
                         className="mt-1"
+                        maxLength={19}
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="reference-number">Transaction/Reference Number</Label>
-                      <Input
-                        id="reference-number"
-                        type="text"
-                        placeholder="e.g., TXN123456789"
-                        value={bankDetails.referenceNumber}
-                        onChange={(e) => setBankDetails(prev => ({ ...prev, referenceNumber: e.target.value }))}
-                        required
-                        className="mt-1"
-                      />
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Enter the transaction reference from your bank after completing the transfer
-                      </p>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="expiry-date">Expiry Date</Label>
+                        <Input
+                          id="expiry-date"
+                          type="text"
+                          placeholder="MM/YY"
+                          value={cardDetails.expiryDate}
+                          onChange={(e) => {
+                            let value = e.target.value.replace(/[^\d]/g, '');
+                            if (value.length >= 2) {
+                              value = value.slice(0, 2) + '/' + value.slice(2, 4);
+                            }
+                            setCardDetails(prev => ({ ...prev, expiryDate: value }));
+                          }}
+                          required
+                          className="mt-1"
+                          maxLength={5}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="cvc">CVC</Label>
+                        <Input
+                          id="cvc"
+                          type="text"
+                          placeholder="123"
+                          value={cardDetails.cvc}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^\d]/g, '');
+                            setCardDetails(prev => ({ ...prev, cvc: value.slice(0, 4) }));
+                          }}
+                          required
+                          className="mt-1"
+                          maxLength={4}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Notice about payment verification */}
+                {/* Notice about payment */}
                 <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <Lock className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm">
-                      <p className="font-medium text-blue-800">Payment Verification</p>
+                      <p className="font-medium text-blue-800">Secure Payment</p>
                       <p className="text-blue-700 mt-1">
                         {paymentMethod === 'mpesa' 
                           ? 'You will receive an M-Pesa prompt on your phone. Enter your PIN to complete payment.'
-                          : 'After making your bank transfer, enter the transaction details above. We will verify and unlock your download.'}
+                          : 'Your card details are encrypted and processed securely.'}
                       </p>
                     </div>
                   </div>
