@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface PaymentRequest {
-  payment_method: 'mpesa' | 'bank';
+  payment_method: 'mpesa' | 'card';
   items: Array<{
     product_id: string;
     amount: number;
@@ -15,8 +15,10 @@ interface PaymentRequest {
   }>;
   payment_details: {
     phone?: string;
-    accountName?: string;
-    referenceNumber?: string;
+    cardNumber?: string;
+    cardName?: string;
+    expiryDate?: string;
+    cvc?: string;
   };
 }
 
@@ -156,19 +158,20 @@ serve(async (req) => {
         // 3. Handle callback or poll for status
         break;
 
-      case 'bank':
-        // Bank transfer - manual verification required
-        console.log('Bank transfer payment requested.');
-        console.log('Account Name:', body.payment_details.accountName);
-        console.log('Reference Number:', body.payment_details.referenceNumber);
+      case 'card':
+        // Card payment processing
+        console.log('Card payment requested.');
+        console.log('Card Name:', body.payment_details.cardName);
+        // Note: In production, never log full card numbers
+        console.log('Card ending:', body.payment_details.cardNumber?.slice(-4));
         
-        // For bank transfers, we log the details and mark as pending verification
-        // Admin will manually verify the transfer and update the purchase
+        // TODO: Integrate with a payment gateway (e.g., Stripe, Flutterwave, Paystack)
+        // For now, return pending integration status
         return new Response(
           JSON.stringify({ 
             success: false, 
-            status: 'pending_verification',
-            message: 'Thank you! Your bank transfer details have been received. We will verify your payment and send you a download link within 24 hours. For faster processing, contact us at pointresearchlimited@gmail.com with your reference number.'
+            status: 'pending_integration',
+            message: 'Card payment integration is being set up. Please contact support at pointresearchlimited@gmail.com or use M-Pesa to complete your purchase.'
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
