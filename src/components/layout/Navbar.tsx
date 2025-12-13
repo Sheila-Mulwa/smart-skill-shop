@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ShoppingCart, Search, Menu, X, User, Upload, LogOut } from 'lucide-react';
+import { ShoppingCart, Search, Menu, X, User, Upload, LogOut, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
@@ -76,16 +76,28 @@ const Navbar = () => {
           </Tooltip>
           
           {isAdmin && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link to="/admin/upload">
-                  <Button variant="ghost" size="icon" className="hidden md:flex">
-                    <Upload className="h-5 w-5" />
-                  </Button>
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>Upload Product</TooltipContent>
-            </Tooltip>
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link to="/admin/upload">
+                    <Button variant="ghost" size="icon" className="hidden md:flex">
+                      <Upload className="h-5 w-5" />
+                    </Button>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Upload Product</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link to="/admin/products">
+                    <Button variant="ghost" size="icon" className="hidden md:flex">
+                      <Settings className="h-5 w-5" />
+                    </Button>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Manage Products</TooltipContent>
+              </Tooltip>
+            </>
           )}
           
           {isAuthenticated ? (
@@ -174,13 +186,22 @@ const Navbar = () => {
               </Link>
             ))}
             {isAdmin && (
-              <Link
-                to="/admin/upload"
-                className="rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-secondary"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                📤 Upload Product
-              </Link>
+              <>
+                <Link
+                  to="/admin/upload"
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-secondary"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  📤 Upload Product
+                </Link>
+                <Link
+                  to="/admin/products"
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-secondary"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  ⚙️ Manage Products
+                </Link>
+              </>
             )}
             {isAuthenticated && (
               <Link
