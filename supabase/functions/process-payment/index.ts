@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface PaymentRequest {
-  payment_method: 'mpesa' | 'card' | 'paypal';
+  payment_method: 'mpesa' | 'bank';
   items: Array<{
     product_id: string;
     amount: number;
@@ -15,8 +15,8 @@ interface PaymentRequest {
   }>;
   payment_details: {
     phone?: string;
-    card_token?: string;
-    paypal_order_id?: string;
+    accountName?: string;
+    referenceNumber?: string;
   };
 }
 
@@ -123,12 +123,7 @@ serve(async (req) => {
       }
     }
 
-    // Payment processing placeholder
-    // In a real implementation, this would:
-    // - M-Pesa: Call Safaricom Daraja API to initiate STK push
-    // - Card: Call Stripe API with the card token
-    // - PayPal: Verify the PayPal order ID with PayPal API
-    
+    // Payment processing
     let paymentVerified = false;
     let transactionId = '';
 
@@ -138,43 +133,42 @@ serve(async (req) => {
         // For now, log that this is pending integration
         console.log('M-Pesa payment requested. API integration pending.');
         console.log('Phone:', body.payment_details.phone);
-        // In production, you would:
-        // 1. Call Daraja API to send STK push
-        // 2. Wait for callback or poll for status
-        // 3. Only set paymentVerified = true if payment confirmed
         
-        // SECURITY: Currently marking as "pending" - do not unlock products
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            status: 'pending_integration',
-            message: 'M-Pesa integration pending. Please contact support to complete your purchase.'
-          }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        // Check if M-Pesa API credentials are configured
+        const mpesaConsumerKey = Deno.env.get('MPESA_CONSUMER_KEY');
+        const mpesaConsumerSecret = Deno.env.get('MPESA_CONSUMER_SECRET');
+        
+        if (!mpesaConsumerKey || !mpesaConsumerSecret) {
+          console.log('M-Pesa credentials not configured');
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              status: 'pending_integration',
+              message: 'M-Pesa integration pending setup. Please contact support at pointresearchlimited@gmail.com to complete your purchase.'
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // TODO: When credentials are ready, implement STK push here
+        // 1. Get OAuth token from Daraja API
+        // 2. Send STK push request
+        // 3. Handle callback or poll for status
+        break;
 
-      case 'card':
-        // TODO: Integrate with Stripe API
-        console.log('Card payment requested. Stripe integration pending.');
+      case 'bank':
+        // Bank transfer - manual verification required
+        console.log('Bank transfer payment requested.');
+        console.log('Account Name:', body.payment_details.accountName);
+        console.log('Reference Number:', body.payment_details.referenceNumber);
         
+        // For bank transfers, we log the details and mark as pending verification
+        // Admin will manually verify the transfer and update the purchase
         return new Response(
           JSON.stringify({ 
             success: false, 
-            status: 'pending_integration',
-            message: 'Card payment integration pending. Please use M-Pesa or contact support.'
-          }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-
-      case 'paypal':
-        // TODO: Integrate with PayPal API to verify order
-        console.log('PayPal payment requested. API integration pending.');
-        
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            status: 'pending_integration',
-            message: 'PayPal integration pending. Please use M-Pesa or contact support.'
+            status: 'pending_verification',
+            message: 'Thank you! Your bank transfer details have been received. We will verify your payment and send you a download link within 24 hours. For faster processing, contact us at pointresearchlimited@gmail.com with your reference number.'
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -186,10 +180,8 @@ serve(async (req) => {
         );
     }
 
-    // This code would run after payment verification
-    // Currently unreachable until payment integrations are completed
+    // This code would run after payment verification (when M-Pesa API is integrated)
     if (paymentVerified) {
-      // User is already verified above, so we can safely use it
       const userId = user!.id;
       // Create purchase records using service role
       const purchases = body.items.map(item => ({
@@ -223,6 +215,16 @@ serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Default fallback - should not normally reach here
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        status: 'pending_integration',
+        message: 'Payment processing in progress. Please contact support.'
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
   } catch (error) {
     console.error('Payment processing error:', error);
