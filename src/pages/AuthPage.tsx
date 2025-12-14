@@ -31,10 +31,9 @@ const AuthPage = () => {
   const [otpSent, setOtpSent] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [resetSent, setResetSent] = useState(false);
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
   
   const navigate = useNavigate();
-  const { user, signUp, signIn, signInWithGoogle, signInWithPhone, verifyPhoneOtp, signInWithMagicLink, resetPassword, updatePassword } = useAuth();
+  const { user, signUp, signIn, signInWithGoogle, signInWithPhone, verifyPhoneOtp, resetPassword, updatePassword } = useAuth();
 
   // Redirect if already logged in (except for password update mode)
   useEffect(() => {
@@ -308,62 +307,9 @@ const AuthPage = () => {
             </div>
           )}
 
-          {/* Magic Link Sign In (only on login) */}
+          {/* Social & Auth Method Selection (only on login) */}
           {mode === 'login' && (
             <div className="mb-6 space-y-4">
-              {magicLinkSent ? (
-                <Alert className="border-green-500 bg-green-50">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <AlertDescription className="text-green-800">
-                    Magic link sent! Check your email inbox and click the link to sign in.
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="magicEmail">Email for Magic Link</Label>
-                    <Input
-                      id="magicEmail"
-                      type="email"
-                      placeholder="Enter your admin email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="default"
-                    className="w-full bg-green-600 hover:bg-green-700"
-                    onClick={async () => {
-                      if (!email) {
-                        toast({ title: 'Enter your email', variant: 'destructive' });
-                        return;
-                      }
-                      setIsLoading(true);
-                      const { error } = await signInWithMagicLink(email);
-                      setIsLoading(false);
-                      if (error) {
-                        toast({ title: 'Failed to send magic link', description: error.message, variant: 'destructive' });
-                      } else {
-                        setMagicLinkSent(true);
-                        toast({ title: 'Magic link sent!', description: 'Check your email inbox' });
-                      }
-                    }}
-                    disabled={isLoading}
-                  >
-                    <Mail className="mr-2 h-4 w-4" />
-                    {isLoading ? 'Sending...' : 'Send Magic Link (No Password)'}
-                  </Button>
-                </>
-              )}
-              
-              <div className="relative">
-                <Separator />
-                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-muted-foreground">
-                  or sign in with password
-                </span>
-              </div>
-
               <Button
                 type="button"
                 variant="outline"
