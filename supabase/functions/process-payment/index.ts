@@ -43,8 +43,8 @@ async function getPesaPalToken(): Promise<string> {
   const consumerKey = Deno.env.get('PESAPAL_CONSUMER_KEY')!;
   const consumerSecret = Deno.env.get('PESAPAL_CONSUMER_SECRET')!;
   
-  // Use sandbox URL for testing - change to live URL in production
-  const tokenUrl = 'https://cybqa.pesapal.com/pesapalv3/api/Auth/RequestToken';
+  // Production/Live URL
+  const tokenUrl = 'https://pay.pesapal.com/v3/api/Auth/RequestToken';
   
   console.log('Fetching PesaPal OAuth token...');
   
@@ -97,7 +97,7 @@ async function registerIpn(token: string): Promise<string> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const ipnUrl = `${supabaseUrl}/functions/v1/pesapal-ipn`;
   
-  const registerUrl = 'https://cybqa.pesapal.com/pesapalv3/api/URLSetup/RegisterIPN';
+  const registerUrl = 'https://pay.pesapal.com/v3/api/URLSetup/RegisterIPN';
   
   const response = await fetch(registerUrl, {
     method: 'POST',
@@ -124,7 +124,7 @@ async function registerIpn(token: string): Promise<string> {
 
 // Get registered IPN ID
 async function getRegisteredIpnId(token: string): Promise<string> {
-  const listUrl = 'https://cybqa.pesapal.com/pesapalv3/api/URLSetup/GetIpnList';
+  const listUrl = 'https://pay.pesapal.com/v3/api/URLSetup/GetIpnList';
   
   const response = await fetch(listUrl, {
     method: 'GET',
@@ -167,7 +167,7 @@ async function submitOrder(
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const callbackUrl = `${supabaseUrl}/functions/v1/pesapal-callback`;
   
-  const orderUrl = 'https://cybqa.pesapal.com/pesapalv3/api/Transactions/SubmitOrderRequest';
+  const orderUrl = 'https://pay.pesapal.com/v3/api/Transactions/SubmitOrderRequest';
   
   const requestBody = {
     id: orderId,

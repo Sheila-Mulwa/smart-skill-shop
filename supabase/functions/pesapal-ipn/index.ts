@@ -17,7 +17,7 @@ async function getPesaPalToken(): Promise<string> {
   const consumerKey = Deno.env.get('PESAPAL_CONSUMER_KEY')!;
   const consumerSecret = Deno.env.get('PESAPAL_CONSUMER_SECRET')!;
   
-  const tokenUrl = 'https://cybqa.pesapal.com/pesapalv3/api/Auth/RequestToken';
+  const tokenUrl = 'https://pay.pesapal.com/v3/api/Auth/RequestToken';
   
   const response = await fetch(tokenUrl, {
     method: 'POST',
@@ -41,7 +41,7 @@ async function getPesaPalToken(): Promise<string> {
 
 // Get transaction status from PesaPal
 async function getTransactionStatus(token: string, orderTrackingId: string): Promise<any> {
-  const statusUrl = `https://cybqa.pesapal.com/pesapalv3/api/Transactions/GetTransactionStatus?orderTrackingId=${orderTrackingId}`;
+  const statusUrl = `https://pay.pesapal.com/v3/api/Transactions/GetTransactionStatus?orderTrackingId=${orderTrackingId}`;
   
   const response = await fetch(statusUrl, {
     method: 'GET',
