@@ -124,7 +124,9 @@ const CheckoutPage = () => {
   // Calculate total USD price using real exchange rate
   const totalUsd = totalPrice * exchangeRate;
 
-  if (!purchaseComplete && !pendingIntegration && items.length === 0) {
+  // Don't redirect to cart if we're processing a payment callback
+  const paymentStatus = searchParams.get('payment');
+  if (!purchaseComplete && !pendingIntegration && !verifyingPayment && items.length === 0 && !paymentStatus) {
     navigate('/cart');
     return null;
   }
