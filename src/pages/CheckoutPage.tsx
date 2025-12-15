@@ -61,8 +61,8 @@ const CheckoutPage = () => {
     const orderId = searchParams.get('order');
     
     if (paymentStatus === 'success' && orderId) {
-      // Payment completed - fetch user's purchases and show success
-      const fetchPurchases = async () => {
+      // Payment completed - wait a moment for IPN to process, then fetch purchases
+      const fetchPurchasesWithRetry = async (attempts = 0) => {
         if (!user) return;
         
         const { data: purchases } = await supabase
@@ -85,10 +85,21 @@ const CheckoutPage = () => {
             title: 'Payment Successful!',
             description: 'Your products are ready for download.',
           });
+        } else if (attempts < 5) {
+          // Retry after 2 seconds if no purchases found yet (IPN might be processing)
+          setTimeout(() => fetchPurchasesWithRetry(attempts + 1), 2000);
+        } else {
+          // After 5 attempts, show message and link to library
+          toast({
+            title: 'Payment Processing',
+            description: 'Your payment is being verified. Check your library in a moment.',
+          });
+          navigate('/purchases');
         }
       };
       
-      fetchPurchases();
+      // Start fetching after a short delay to allow IPN to process
+      setTimeout(() => fetchPurchasesWithRetry(), 1500);
     } else if (paymentStatus === 'error') {
       toast({
         title: 'Payment Failed',
@@ -96,7 +107,7 @@ const CheckoutPage = () => {
         variant: 'destructive',
       });
     }
-  }, [searchParams, user, clearCart]);
+  }, [searchParams, user, clearCart, navigate]);
 
   const totalPrice = getTotalPrice();
   
