@@ -18,7 +18,7 @@ const FeaturedProducts = () => {
         const { data, error } = await supabase
           .from('products')
           .select('*')
-          .eq('featured', true)
+          .order('created_at', { ascending: false })
           .limit(6);
 
         if (error) throw error;
@@ -112,7 +112,7 @@ const FeaturedProducts = () => {
               Our most popular and highly-rated digital products
             </p>
           </div>
-          <Link to="/category/technology" className="hidden md:block">
+          <Link to="/search" className="hidden md:block">
             <Button variant="outline">View All Products</Button>
           </Link>
         </div>
@@ -124,7 +124,7 @@ const FeaturedProducts = () => {
         </div>
 
         <div className="mt-8 text-center md:hidden">
-          <Link to="/category/technology">
+          <Link to="/search">
             <Button variant="outline">View All Products</Button>
           </Link>
         </div>
