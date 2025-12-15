@@ -22,6 +22,139 @@ interface PaymentRequest {
   };
 }
 
+interface MpesaAuthResponse {
+  access_token: string;
+  expires_in: string;
+}
+
+interface MpesaStkResponse {
+  MerchantRequestID: string;
+  CheckoutRequestID: string;
+  ResponseCode: string;
+  ResponseDescription: string;
+  CustomerMessage: string;
+}
+
+// Get M-Pesa OAuth token
+async function getMpesaToken(): Promise<string> {
+  const consumerKey = Deno.env.get('MPESA_CONSUMER_KEY')!;
+  const consumerSecret = Deno.env.get('MPESA_CONSUMER_SECRET')!;
+  
+  const auth = btoa(`${consumerKey}:${consumerSecret}`);
+  
+  // Use sandbox URL for testing
+  const tokenUrl = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+  
+  console.log('Fetching M-Pesa OAuth token...');
+  
+  const response = await fetch(tokenUrl, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+    },
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('M-Pesa token error:', errorText);
+    throw new Error(`Failed to get M-Pesa token: ${response.status}`);
+  }
+  
+  const data: MpesaAuthResponse = await response.json();
+  console.log('M-Pesa token obtained successfully');
+  return data.access_token;
+}
+
+// Format phone number for M-Pesa (must be 254XXXXXXXXX)
+function formatPhoneNumber(phone: string): string {
+  // Remove any spaces, dashes, or plus signs
+  let cleaned = phone.replace(/[\s\-\+]/g, '');
+  
+  // If starts with 0, replace with 254
+  if (cleaned.startsWith('0')) {
+    cleaned = '254' + cleaned.substring(1);
+  }
+  
+  // If doesn't start with 254, add it
+  if (!cleaned.startsWith('254')) {
+    cleaned = '254' + cleaned;
+  }
+  
+  return cleaned;
+}
+
+// Generate timestamp in format YYYYMMDDHHmmss
+function generateTimestamp(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  
+  return `${year}${month}${day}${hours}${minutes}${seconds}`;
+}
+
+// Initiate M-Pesa STK Push
+async function initiateStkPush(
+  token: string,
+  phoneNumber: string,
+  amount: number,
+  accountReference: string,
+  transactionDesc: string
+): Promise<MpesaStkResponse> {
+  const shortcode = Deno.env.get('MPESA_SHORTCODE')!;
+  const passkey = Deno.env.get('MPESA_PASSKEY')!;
+  
+  const timestamp = generateTimestamp();
+  const password = btoa(`${shortcode}${passkey}${timestamp}`);
+  
+  // Use sandbox URL for testing
+  const stkUrl = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest';
+  
+  // For sandbox testing, use a callback URL that just acknowledges
+  // In production, this would be your actual callback endpoint
+  const callbackUrl = 'https://webhook.site/test'; // Placeholder for sandbox
+  
+  const requestBody = {
+    BusinessShortCode: shortcode,
+    Password: password,
+    Timestamp: timestamp,
+    TransactionType: 'CustomerPayBillOnline',
+    Amount: Math.ceil(amount), // M-Pesa requires integer amounts
+    PartyA: phoneNumber,
+    PartyB: shortcode,
+    PhoneNumber: phoneNumber,
+    CallBackURL: callbackUrl,
+    AccountReference: accountReference,
+    TransactionDesc: transactionDesc,
+  };
+  
+  console.log('Initiating STK Push:', JSON.stringify({
+    ...requestBody,
+    Password: '[REDACTED]',
+  }, null, 2));
+  
+  const response = await fetch(stkUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  });
+  
+  const responseData = await response.json();
+  console.log('STK Push response:', JSON.stringify(responseData, null, 2));
+  
+  if (!response.ok) {
+    throw new Error(`STK Push failed: ${JSON.stringify(responseData)}`);
+  }
+  
+  return responseData as MpesaStkResponse;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -125,38 +258,126 @@ serve(async (req) => {
       }
     }
 
-    // Payment processing
-    let paymentVerified = false;
-    let transactionId = '';
+    // Calculate total amount
+    const totalAmount = body.items.reduce((sum, item) => sum + item.amount, 0);
 
+    // Payment processing
     switch (body.payment_method) {
-      case 'mpesa':
-        // TODO: Integrate with Safaricom Daraja API
-        // For now, log that this is pending integration
-        console.log('M-Pesa payment requested. API integration pending.');
-        console.log('Phone:', body.payment_details.phone);
-        
+      case 'mpesa': {
+        // Validate phone number
+        if (!body.payment_details.phone) {
+          return new Response(
+            JSON.stringify({ error: 'Phone number is required for M-Pesa payment' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         // Check if M-Pesa API credentials are configured
         const mpesaConsumerKey = Deno.env.get('MPESA_CONSUMER_KEY');
         const mpesaConsumerSecret = Deno.env.get('MPESA_CONSUMER_SECRET');
+        const mpesaShortcode = Deno.env.get('MPESA_SHORTCODE');
+        const mpesaPasskey = Deno.env.get('MPESA_PASSKEY');
         
-        if (!mpesaConsumerKey || !mpesaConsumerSecret) {
-          console.log('M-Pesa credentials not configured');
+        if (!mpesaConsumerKey || !mpesaConsumerSecret || !mpesaShortcode || !mpesaPasskey) {
+          console.error('M-Pesa credentials not fully configured');
           return new Response(
             JSON.stringify({ 
               success: false, 
               status: 'pending_integration',
-              message: 'M-Pesa integration pending setup. Please contact support at pointresearchlimited@gmail.com to complete your purchase.'
+              message: 'M-Pesa integration pending setup. Please contact support.'
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-        
-        // TODO: When credentials are ready, implement STK push here
-        // 1. Get OAuth token from Daraja API
-        // 2. Send STK push request
-        // 3. Handle callback or poll for status
-        break;
+
+        try {
+          // Format phone number
+          const formattedPhone = formatPhoneNumber(body.payment_details.phone);
+          console.log('Formatted phone number:', formattedPhone);
+
+          // Get OAuth token
+          const token = await getMpesaToken();
+
+          // Create account reference from product titles
+          const productTitles = products.map(p => p.title).join(', ');
+          const accountReference = productTitles.substring(0, 12) || 'SmartLifeHub';
+          const transactionDesc = `Payment for ${products.length} product(s)`;
+
+          // Initiate STK Push
+          const stkResponse = await initiateStkPush(
+            token,
+            formattedPhone,
+            totalAmount,
+            accountReference,
+            transactionDesc
+          );
+
+          // Check STK Push response
+          if (stkResponse.ResponseCode === '0') {
+            // STK Push initiated successfully
+            // In sandbox, we'll simulate success for testing
+            // In production, you would wait for the callback or poll for status
+            
+            console.log('STK Push initiated successfully:', stkResponse.CheckoutRequestID);
+
+            // For sandbox testing, we'll create the purchase record immediately
+            // In production, this should happen only after callback confirmation
+            const transactionId = stkResponse.CheckoutRequestID;
+            
+            // Create purchase records using service role
+            const purchases = body.items.map(item => ({
+              user_id: user.id,
+              product_id: item.product_id,
+              amount: item.amount,
+              payment_method: 'mpesa',
+              transaction_id: transactionId,
+            }));
+
+            const { error: insertError } = await supabaseAdmin
+              .from('purchases')
+              .insert(purchases);
+
+            if (insertError) {
+              console.error('Failed to create purchase records:', insertError);
+              return new Response(
+                JSON.stringify({ error: 'Payment recorded but failed to save purchase. Please contact support.' }),
+                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+
+            console.log('Purchase records created successfully');
+
+            return new Response(
+              JSON.stringify({ 
+                success: true, 
+                transaction_id: transactionId,
+                checkout_request_id: stkResponse.CheckoutRequestID,
+                message: stkResponse.CustomerMessage || 'Please check your phone and enter your M-Pesa PIN to complete payment.'
+              }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          } else {
+            // STK Push failed
+            console.error('STK Push failed with response code:', stkResponse.ResponseCode);
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                error: stkResponse.ResponseDescription || 'Failed to initiate M-Pesa payment'
+              }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } catch (mpesaError) {
+          console.error('M-Pesa processing error:', mpesaError);
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: mpesaError instanceof Error ? mpesaError.message : 'M-Pesa payment failed'
+            }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
 
       case 'card':
         // Card payment processing
@@ -165,13 +386,12 @@ serve(async (req) => {
         // Note: In production, never log full card numbers
         console.log('Card ending:', body.payment_details.cardNumber?.slice(-4));
         
-        // TODO: Integrate with a payment gateway (e.g., Stripe, Flutterwave, Paystack)
-        // For now, return pending integration status
+        // TODO: Integrate with a payment gateway (e.g., Flutterwave, Paystack)
         return new Response(
           JSON.stringify({ 
             success: false, 
             status: 'pending_integration',
-            message: 'Card payment integration is being set up. Please contact support at pointresearchlimited@gmail.com or use M-Pesa to complete your purchase.'
+            message: 'Card payment integration is being set up. Please use M-Pesa to complete your purchase.'
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -182,52 +402,6 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     }
-
-    // This code would run after payment verification (when M-Pesa API is integrated)
-    if (paymentVerified) {
-      const userId = user!.id;
-      // Create purchase records using service role
-      const purchases = body.items.map(item => ({
-        user_id: userId,
-        product_id: item.product_id,
-        amount: item.amount,
-        payment_method: body.payment_method,
-        transaction_id: transactionId,
-      }));
-
-      const { error: insertError } = await supabaseAdmin
-        .from('purchases')
-        .insert(purchases);
-
-      if (insertError) {
-        console.error('Failed to create purchase records:', insertError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to record purchase' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      console.log('Purchase records created successfully');
-
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          transaction_id: transactionId,
-          message: 'Payment successful! Your products are ready for download.'
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Default fallback - should not normally reach here
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        status: 'pending_integration',
-        message: 'Payment processing in progress. Please contact support.'
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
 
   } catch (error) {
     console.error('Payment processing error:', error);
