@@ -42,6 +42,7 @@ const CheckoutPage = () => {
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [purchasedProducts, setPurchasedProducts] = useState<PurchasedProduct[]>([]);
   const [pendingIntegration, setPendingIntegration] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
   const { downloadProduct, isDownloading, downloadingId } = useSecureDownload();
   const { rate: exchangeRate } = useExchangeRate();
 
@@ -61,6 +62,9 @@ const CheckoutPage = () => {
     const orderId = searchParams.get('order');
     
     if (paymentStatus === 'success' && orderId) {
+      // Show verifying state
+      setVerifyingPayment(true);
+      
       // Payment completed - wait a moment for IPN to process, then fetch purchases
       const fetchPurchasesWithRetry = async (attempts = 0) => {
         if (!user) return;
@@ -80,16 +84,18 @@ const CheckoutPage = () => {
           }));
           setPurchasedProducts(products);
           setPurchaseComplete(true);
+          setVerifyingPayment(false);
           clearCart();
           toast({
             title: 'Payment Successful!',
             description: 'Your products are ready for download.',
           });
-        } else if (attempts < 5) {
+        } else if (attempts < 8) {
           // Retry after 2 seconds if no purchases found yet (IPN might be processing)
           setTimeout(() => fetchPurchasesWithRetry(attempts + 1), 2000);
         } else {
-          // After 5 attempts, show message and link to library
+          // After 8 attempts, show message and link to library
+          setVerifyingPayment(false);
           toast({
             title: 'Payment Processing',
             description: 'Your payment is being verified. Check your library in a moment.',
@@ -302,6 +308,33 @@ const CheckoutPage = () => {
               <Button onClick={() => navigate('/')}>
                 Continue Browsing
               </Button>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Show verifying payment state
+  if (verifyingPayment) {
+    return (
+      <Layout>
+        <div className="container py-12">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="mb-6 flex justify-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
+                <Loader2 className="h-10 w-10 text-primary animate-spin" />
+              </div>
+            </div>
+            <h1 className="mb-4 text-3xl font-bold text-foreground">Verifying Payment...</h1>
+            <p className="mb-8 text-muted-foreground">
+              Please wait while we confirm your payment. This may take a few seconds.
+            </p>
+            <div className="rounded-xl border border-border bg-card p-6">
+              <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+                <span>Payment received - preparing your downloads...</span>
+              </div>
             </div>
           </div>
         </div>
