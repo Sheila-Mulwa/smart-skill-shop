@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Smartphone, CheckCircle, Lock, Download, Loader2, AlertTriangle, CreditCard } from 'lucide-react';
+import { Smartphone, CheckCircle, Lock, Download, Loader2, AlertTriangle } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,23 +8,9 @@ import { Label } from '@/components/ui/label';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useSecureDownload } from '@/hooks/useSecureDownload';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
-
-type PaymentMethod = 'mpesa' | 'card';
-
-interface MpesaDetails {
-  phone: string;
-}
-
-interface CardDetails {
-  cardNumber: string;
-  cardName: string;
-  expiryDate: string;
-  cvc: string;
-}
 
 interface PurchasedProduct {
   id: string;
@@ -37,7 +23,6 @@ const CheckoutPage = () => {
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mpesa');
   const [isProcessing, setIsProcessing] = useState(false);
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [purchasedProducts, setPurchasedProducts] = useState<PurchasedProduct[]>([]);
@@ -46,15 +31,7 @@ const CheckoutPage = () => {
   const { downloadProduct, isDownloading, downloadingId } = useSecureDownload();
   const { rate: exchangeRate } = useExchangeRate();
 
-  const [mpesaDetails, setMpesaDetails] = useState<MpesaDetails>({
-    phone: '',
-  });
-  const [cardDetails, setCardDetails] = useState<CardDetails>({
-    cardNumber: '',
-    cardName: '',
-    expiryDate: '',
-    cvc: '',
-  });
+  const [phoneNumber, setPhoneNumber] = useState('');
 
   // Handle PesaPal callback
   useEffect(() => {
@@ -129,31 +106,10 @@ const CheckoutPage = () => {
     return value.replace(/[^0-9+]/gi, '');
   };
 
-  const validateMpesaDetails = () => {
-    const phone = mpesaDetails.phone.replace(/[^0-9]/g, '');
+  const validatePhoneNumber = () => {
+    const phone = phoneNumber.replace(/[^0-9]/g, '');
     if (phone.length < 9) {
-      toast({ title: 'Invalid phone number', description: 'Please enter a valid M-Pesa phone number', variant: 'destructive' });
-      return false;
-    }
-    return true;
-  };
-
-  const validateCardDetails = () => {
-    const cardNum = cardDetails.cardNumber.replace(/\s/g, '');
-    if (cardNum.length < 13 || cardNum.length > 19) {
-      toast({ title: 'Invalid card number', description: 'Please enter a valid card number', variant: 'destructive' });
-      return false;
-    }
-    if (!cardDetails.cardName.trim()) {
-      toast({ title: 'Name required', description: 'Please enter the name on your card', variant: 'destructive' });
-      return false;
-    }
-    if (!/^\d{2}\/\d{2}$/.test(cardDetails.expiryDate)) {
-      toast({ title: 'Invalid expiry', description: 'Please enter expiry as MM/YY', variant: 'destructive' });
-      return false;
-    }
-    if (cardDetails.cvc.length < 3 || cardDetails.cvc.length > 4) {
-      toast({ title: 'Invalid CVC', description: 'Please enter a valid CVC code', variant: 'destructive' });
+      toast({ title: 'Invalid phone number', description: 'Please enter a valid phone number', variant: 'destructive' });
       return false;
     }
     return true;
@@ -172,11 +128,8 @@ const CheckoutPage = () => {
       return;
     }
 
-    // Validate payment details based on method
-    if (paymentMethod === 'mpesa' && !validateMpesaDetails()) {
-      return;
-    }
-    if (paymentMethod === 'card' && !validateCardDetails()) {
+    // Validate phone number
+    if (!validatePhoneNumber()) {
       return;
     }
     
@@ -191,25 +144,15 @@ const CheckoutPage = () => {
         return;
       }
 
-      // Call the secure payment processing edge function
-      const paymentDetails = paymentMethod === 'mpesa'
-        ? { phone: mpesaDetails.phone }
-        : { 
-            cardNumber: cardDetails.cardNumber.replace(/\s/g, ''),
-            cardName: cardDetails.cardName,
-            expiryDate: cardDetails.expiryDate,
-            cvc: cardDetails.cvc
-          };
-
       const { data, error } = await supabase.functions.invoke('process-payment', {
         body: {
-          payment_method: paymentMethod,
+          payment_method: 'mpesa',
           items: items.map(item => ({
             product_id: item.product.id,
             amount: item.product.price * item.quantity,
             quantity: item.quantity,
           })),
-          payment_details: paymentDetails,
+          payment_details: { phone: phoneNumber },
         },
       });
 
@@ -411,183 +354,50 @@ const CheckoutPage = () => {
               <div className="rounded-xl border border-border bg-card p-6">
                 <h2 className="mb-4 text-lg font-semibold text-foreground">Payment Method</h2>
                 
-                {/* Payment Method Selection */}
-                <div className="space-y-3">
-                  {/* M-Pesa Option */}
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('mpesa')}
-                    className={cn(
-                      'flex w-full items-center gap-4 rounded-lg border p-4 text-left transition-all',
-                      paymentMethod === 'mpesa'
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/50'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'flex h-10 w-10 items-center justify-center rounded-lg',
-                        paymentMethod === 'mpesa'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-secondary text-muted-foreground'
-                      )}
-                    >
-                      <Smartphone className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">M-Pesa</p>
-                      <p className="text-sm text-muted-foreground">Pay with M-Pesa mobile money</p>
-                    </div>
-                    {paymentMethod === 'mpesa' && (
-                      <CheckCircle className="h-5 w-5 text-primary" />
-                    )}
-                  </button>
-
-                  {/* Card Payment Option */}
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('card')}
-                    className={cn(
-                      'flex w-full items-center gap-4 rounded-lg border p-4 text-left transition-all',
-                      paymentMethod === 'card'
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/50'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'flex h-10 w-10 items-center justify-center rounded-lg',
-                        paymentMethod === 'card'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-secondary text-muted-foreground'
-                      )}
-                    >
-                      <CreditCard className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">Debit/Credit Card</p>
-                      <p className="text-sm text-muted-foreground">Pay with Visa, Mastercard, etc.</p>
-                    </div>
-                    {paymentMethod === 'card' && (
-                      <CheckCircle className="h-5 w-5 text-primary" />
-                    )}
-                  </button>
+                {/* PesaPal - Single Payment Option */}
+                <div className="flex items-center gap-4 rounded-lg border border-primary bg-primary/5 p-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <Smartphone className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-foreground">PesaPal</p>
+                    <p className="text-sm text-muted-foreground">Pay with M-Pesa, Card, or Bank</p>
+                  </div>
+                  <CheckCircle className="h-5 w-5 text-primary" />
                 </div>
 
-                {/* M-Pesa Details */}
-                {paymentMethod === 'mpesa' && (
-                  <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Smartphone className="h-4 w-4" />
-                      <span>Enter your M-Pesa registered phone number</span>
-                    </div>
-                    <div>
-                      <Label htmlFor="mpesa-phone">M-Pesa Phone Number</Label>
-                      <Input
-                        id="mpesa-phone"
-                        type="tel"
-                        placeholder="0712345678 or +254712345678"
-                        value={mpesaDetails.phone}
-                        onChange={(e) => setMpesaDetails({ phone: formatPhoneNumber(e.target.value) })}
-                        required
-                        className="mt-1"
-                        maxLength={13}
-                      />
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        An STK push will be sent to this number. Amount: KSh. {totalPrice.toFixed(0)}
-                      </p>
-                    </div>
+                {/* Phone Number for PesaPal */}
+                <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Smartphone className="h-4 w-4" />
+                    <span>Enter your phone number for payment</span>
                   </div>
-                )}
-
-                {/* Card Payment Details */}
-                {paymentMethod === 'card' && (
-                  <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <CreditCard className="h-4 w-4" />
-                      <span>Enter your card details</span>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="card-name">Name on Card</Label>
-                      <Input
-                        id="card-name"
-                        type="text"
-                        placeholder="John Doe"
-                        value={cardDetails.cardName}
-                        onChange={(e) => setCardDetails(prev => ({ ...prev, cardName: e.target.value }))}
-                        required
-                        className="mt-1"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="card-number">Card Number</Label>
-                      <Input
-                        id="card-number"
-                        type="text"
-                        placeholder="1234 5678 9012 3456"
-                        value={cardDetails.cardNumber}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/[^\d\s]/g, '').replace(/(\d{4})(?=\d)/g, '$1 ').trim();
-                          setCardDetails(prev => ({ ...prev, cardNumber: value.slice(0, 19) }));
-                        }}
-                        required
-                        className="mt-1"
-                        maxLength={19}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="expiry-date">Expiry Date</Label>
-                        <Input
-                          id="expiry-date"
-                          type="text"
-                          placeholder="MM/YY"
-                          value={cardDetails.expiryDate}
-                          onChange={(e) => {
-                            let value = e.target.value.replace(/[^\d]/g, '');
-                            if (value.length >= 2) {
-                              value = value.slice(0, 2) + '/' + value.slice(2, 4);
-                            }
-                            setCardDetails(prev => ({ ...prev, expiryDate: value }));
-                          }}
-                          required
-                          className="mt-1"
-                          maxLength={5}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="cvc">CVC</Label>
-                        <Input
-                          id="cvc"
-                          type="text"
-                          placeholder="123"
-                          value={cardDetails.cvc}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/[^\d]/g, '');
-                            setCardDetails(prev => ({ ...prev, cvc: value.slice(0, 4) }));
-                          }}
-                          required
-                          className="mt-1"
-                          maxLength={4}
-                        />
-                      </div>
-                    </div>
+                  <div>
+                    <Label htmlFor="mpesa-phone">Phone Number</Label>
+                    <Input
+                      id="mpesa-phone"
+                      type="tel"
+                      placeholder="0712345678 or +254712345678"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(formatPhoneNumber(e.target.value))}
+                      required
+                      className="mt-1"
+                      maxLength={13}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      You'll be redirected to PesaPal to complete payment. Amount: KSh. {totalPrice.toFixed(0)}
+                    </p>
                   </div>
-                )}
+                </div>
 
                 {/* Notice about payment */}
                 <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
                   <div className="flex items-start gap-3">
                     <Lock className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm">
-                      <p className="font-medium text-blue-800">Secure Payment</p>
+                      <p className="font-medium text-blue-800">Secure Payment via PesaPal</p>
                       <p className="text-blue-700 mt-1">
-                        {paymentMethod === 'mpesa' 
-                          ? 'You will receive an M-Pesa prompt on your phone. Enter your PIN to complete payment.'
-                          : 'Your card details are encrypted and processed securely.'}
+                        You'll be redirected to PesaPal where you can pay with M-Pesa, card, or bank transfer.
                       </p>
                     </div>
                   </div>
