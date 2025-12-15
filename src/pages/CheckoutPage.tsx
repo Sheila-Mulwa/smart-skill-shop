@@ -384,22 +384,6 @@ const CheckoutPage = () => {
                       className="mt-1"
                       maxLength={13}
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      You'll be redirected to PesaPal to complete payment. Amount: KSh. {totalPrice.toFixed(0)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Notice about payment */}
-                <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-                  <div className="flex items-start gap-3">
-                    <Lock className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm">
-                      <p className="font-medium text-blue-800">Secure Payment via PesaPal</p>
-                      <p className="text-blue-700 mt-1">
-                        You'll be redirected to PesaPal where you can pay with M-Pesa, card, or bank transfer.
-                      </p>
-                    </div>
                   </div>
                 </div>
               </div>
