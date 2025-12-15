@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      pending_orders: {
+        Row: {
+          created_at: string
+          id: string
+          merchant_reference: string
+          order_tracking_id: string | null
+          product_amounts: number[]
+          product_ids: string[]
+          status: string
+          total_amount: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          merchant_reference: string
+          order_tracking_id?: string | null
+          product_amounts: number[]
+          product_ids: string[]
+          status?: string
+          total_amount: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          merchant_reference?: string
+          order_tracking_id?: string | null
+          product_amounts?: number[]
+          product_ids?: string[]
+          status?: string
+          total_amount?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           author: string
