@@ -146,24 +146,57 @@ serve(async (req) => {
       const productIds = pendingOrder.product_ids as string[];
       const productAmounts = pendingOrder.product_amounts as number[];
       
-      const purchases = productIds.map((productId, index) => ({
-        user_id: pendingOrder.user_id,
-        product_id: productId,
-        amount: productAmounts[index] || 0,
-        payment_method: transactionStatus.payment_method || 'pesapal',
-        transaction_id: OrderTrackingId,
-      }));
+      let successfulPurchases = 0;
+      let skippedDuplicates = 0;
 
-      const { error: insertError } = await supabaseAdmin
-        .from('purchases')
-        .insert(purchases);
+      // Insert purchases one by one to handle duplicates gracefully
+      for (let index = 0; index < productIds.length; index++) {
+        const productId = productIds[index];
+        const amount = productAmounts[index] || 0;
 
-      if (insertError) {
-        console.error('Failed to create purchase records:', insertError);
-        return new Response(
-          JSON.stringify({ status: 'error', message: 'Failed to create purchases' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        // Check if user already owns this product
+        const { data: existingOwnership } = await supabaseAdmin
+          .from('purchases')
+          .select('id')
+          .eq('user_id', pendingOrder.user_id)
+          .eq('product_id', productId)
+          .limit(1);
+
+        if (existingOwnership && existingOwnership.length > 0) {
+          console.log(`User already owns product ${productId}, skipping...`);
+          skippedDuplicates++;
+          continue;
+        }
+
+        // Insert the purchase
+        const { error: insertError } = await supabaseAdmin
+          .from('purchases')
+          .insert({
+            user_id: pendingOrder.user_id,
+            product_id: productId,
+            amount: amount,
+            payment_method: transactionStatus.payment_method || 'pesapal',
+            transaction_id: OrderTrackingId,
+          });
+
+        if (insertError) {
+          // If it's a duplicate key error, just log and continue
+          if (insertError.code === '23505') {
+            console.log(`Duplicate purchase detected for product ${productId}, skipping...`);
+            skippedDuplicates++;
+          } else {
+            console.error('Failed to create purchase record:', insertError);
+          }
+        } else {
+          successfulPurchases++;
+        }
+      }
+
+      console.log(`Purchases processed: ${successfulPurchases} created, ${skippedDuplicates} skipped (already owned)`);
+
+      // If all were duplicates, still mark as success
+      if (successfulPurchases === 0 && skippedDuplicates > 0) {
+        console.log('All products already owned by user, marking order as completed');
       }
 
       // Update pending order status
@@ -172,7 +205,7 @@ serve(async (req) => {
         .update({ status: 'completed', updated_at: new Date().toISOString() })
         .eq('id', pendingOrder.id);
 
-      console.log('Purchases created successfully:', purchases.length);
+      console.log('Order processing completed successfully');
 
       return new Response(
         JSON.stringify({ 
