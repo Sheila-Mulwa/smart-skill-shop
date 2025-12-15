@@ -3,8 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Smartphone, CheckCircle, Lock, Download, Loader2, AlertTriangle } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
@@ -31,7 +29,7 @@ const CheckoutPage = () => {
   const { downloadProduct, isDownloading, downloadingId } = useSecureDownload();
   const { rate: exchangeRate } = useExchangeRate();
 
-  const [phoneNumber, setPhoneNumber] = useState('');
+  
 
   // Handle PesaPal callback with real-time listening for faster confirmation
   useEffect(() => {
@@ -131,18 +129,6 @@ const CheckoutPage = () => {
     return null;
   }
 
-  const formatPhoneNumber = (value: string) => {
-    return value.replace(/[^0-9+]/gi, '');
-  };
-
-  const validatePhoneNumber = () => {
-    const phone = phoneNumber.replace(/[^0-9]/g, '');
-    if (phone.length < 9) {
-      toast({ title: 'Invalid phone number', description: 'Please enter a valid phone number', variant: 'destructive' });
-      return false;
-    }
-    return true;
-  };
 
   const handleDownload = async (productId: string, title: string) => {
     await downloadProduct(productId, title);
@@ -157,10 +143,6 @@ const CheckoutPage = () => {
       return;
     }
 
-    // Validate phone number
-    if (!validatePhoneNumber()) {
-      return;
-    }
     
     setIsProcessing(true);
     
@@ -181,7 +163,7 @@ const CheckoutPage = () => {
             amount: item.product.price * item.quantity,
             quantity: item.quantity,
           })),
-          payment_details: { phone: phoneNumber },
+          payment_details: {},
         },
       });
 
@@ -395,26 +377,6 @@ const CheckoutPage = () => {
                   <CheckCircle className="h-5 w-5 text-primary" />
                 </div>
 
-                {/* Phone Number for PesaPal */}
-                <div className="mt-6 space-y-4 rounded-lg border border-border bg-secondary/30 p-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Smartphone className="h-4 w-4" />
-                    <span>Enter your phone number for payment</span>
-                  </div>
-                  <div>
-                    <Label htmlFor="mpesa-phone">Phone Number</Label>
-                    <Input
-                      id="mpesa-phone"
-                      type="tel"
-                      placeholder="0712345678 or +254712345678"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(formatPhoneNumber(e.target.value))}
-                      required
-                      className="mt-1"
-                      maxLength={13}
-                    />
-                  </div>
-                </div>
               </div>
 
               <Button type="submit" variant="hero" size="xl" className="w-full" disabled={isProcessing}>
