@@ -33,19 +33,54 @@ const CheckoutPage = () => {
 
   const [phoneNumber, setPhoneNumber] = useState('');
 
-  // Handle PesaPal callback
+  // Handle PesaPal callback with real-time listening for faster confirmation
   useEffect(() => {
     const paymentStatus = searchParams.get('payment');
     const orderId = searchParams.get('order');
     
-    if (paymentStatus === 'success' && orderId) {
-      // Show verifying state
+    if (paymentStatus === 'success' && orderId && user) {
       setVerifyingPayment(true);
       
-      // Payment completed - wait a moment for IPN to process, then fetch purchases
-      const fetchPurchasesWithRetry = async (attempts = 0) => {
-        if (!user) return;
-        
+      // Set up real-time listener for instant purchase confirmation
+      const channel = supabase
+        .channel('purchase-confirmation')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'purchases',
+            filter: `user_id=eq.${user.id}`,
+          },
+          async (payload) => {
+            // Purchase confirmed! Fetch product details
+            const { data: purchase } = await supabase
+              .from('purchases')
+              .select('product_id, products(id, title, pdf_url)')
+              .eq('id', payload.new.id)
+              .single();
+            
+            if (purchase) {
+              const product: PurchasedProduct = {
+                id: (purchase.products as any).id,
+                title: (purchase.products as any).title,
+                pdf_url: (purchase.products as any).pdf_url,
+              };
+              setPurchasedProducts(prev => [...prev, product]);
+              setPurchaseComplete(true);
+              setVerifyingPayment(false);
+              clearCart();
+              toast({
+                title: 'Payment Successful!',
+                description: 'Your product is ready for download.',
+              });
+            }
+          }
+        )
+        .subscribe();
+
+      // Also check immediately in case purchase was already recorded
+      const checkExistingPurchases = async () => {
         const { data: purchases } = await supabase
           .from('purchases')
           .select('product_id, products(id, title, pdf_url)')
@@ -67,22 +102,16 @@ const CheckoutPage = () => {
             title: 'Payment Successful!',
             description: 'Your products are ready for download.',
           });
-        } else if (attempts < 8) {
-          // Retry after 2 seconds if no purchases found yet (IPN might be processing)
-          setTimeout(() => fetchPurchasesWithRetry(attempts + 1), 2000);
-        } else {
-          // After 8 attempts, show message and link to library
-          setVerifyingPayment(false);
-          toast({
-            title: 'Payment Processing',
-            description: 'Your payment is being verified. Check your library in a moment.',
-          });
-          navigate('/purchases');
         }
       };
       
-      // Start fetching after a short delay to allow IPN to process
-      setTimeout(() => fetchPurchasesWithRetry(), 1500);
+      // Check after a short delay
+      setTimeout(checkExistingPurchases, 500);
+
+      // Cleanup
+      return () => {
+        supabase.removeChannel(channel);
+      };
     } else if (paymentStatus === 'error') {
       toast({
         title: 'Payment Failed',
@@ -90,7 +119,7 @@ const CheckoutPage = () => {
         variant: 'destructive',
       });
     }
-  }, [searchParams, user, clearCart, navigate]);
+  }, [searchParams, user, clearCart]);
 
   const totalPrice = getTotalPrice();
   
