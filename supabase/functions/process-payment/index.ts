@@ -22,60 +22,69 @@ interface PaymentRequest {
   };
 }
 
-interface MpesaAuthResponse {
-  access_token: string;
-  expires_in: string;
+interface PesaPalAuthResponse {
+  token: string;
+  expiryDate: string;
+  error?: any;
+  status: string;
+  message: string;
 }
 
-interface MpesaStkResponse {
-  MerchantRequestID: string;
-  CheckoutRequestID: string;
-  ResponseCode: string;
-  ResponseDescription: string;
-  CustomerMessage: string;
+interface PesaPalOrderResponse {
+  order_tracking_id: string;
+  merchant_reference: string;
+  redirect_url: string;
+  error?: any;
+  status: string;
 }
 
-// Get M-Pesa OAuth token
-async function getMpesaToken(): Promise<string> {
-  const consumerKey = Deno.env.get('MPESA_CONSUMER_KEY')!;
-  const consumerSecret = Deno.env.get('MPESA_CONSUMER_SECRET')!;
+// Get PesaPal OAuth token
+async function getPesaPalToken(): Promise<string> {
+  const consumerKey = Deno.env.get('PESAPAL_CONSUMER_KEY')!;
+  const consumerSecret = Deno.env.get('PESAPAL_CONSUMER_SECRET')!;
   
-  const auth = btoa(`${consumerKey}:${consumerSecret}`);
+  // Use sandbox URL for testing - change to live URL in production
+  const tokenUrl = 'https://cybqa.pesapal.com/pesapalv3/api/Auth/RequestToken';
   
-  // Use sandbox URL for testing
-  const tokenUrl = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
-  
-  console.log('Fetching M-Pesa OAuth token...');
+  console.log('Fetching PesaPal OAuth token...');
   
   const response = await fetch(tokenUrl, {
-    method: 'GET',
+    method: 'POST',
     headers: {
-      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
+    body: JSON.stringify({
+      consumer_key: consumerKey,
+      consumer_secret: consumerSecret,
+    }),
   });
   
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('M-Pesa token error:', errorText);
-    throw new Error(`Failed to get M-Pesa token: ${response.status}`);
+    console.error('PesaPal token error:', errorText);
+    throw new Error(`Failed to get PesaPal token: ${response.status}`);
   }
   
-  const data: MpesaAuthResponse = await response.json();
-  console.log('M-Pesa token obtained successfully');
-  return data.access_token;
+  const data: PesaPalAuthResponse = await response.json();
+  
+  if (data.error) {
+    console.error('PesaPal token error:', data.error);
+    throw new Error(`PesaPal auth failed: ${data.message}`);
+  }
+  
+  console.log('PesaPal token obtained successfully');
+  return data.token;
 }
 
-// Format phone number for M-Pesa (must be 254XXXXXXXXX)
+// Format phone number for PesaPal (254XXXXXXXXX format)
 function formatPhoneNumber(phone: string): string {
-  // Remove any spaces, dashes, or plus signs
   let cleaned = phone.replace(/[\s\-\+]/g, '');
   
-  // If starts with 0, replace with 254
   if (cleaned.startsWith('0')) {
     cleaned = '254' + cleaned.substring(1);
   }
   
-  // If doesn't start with 254, add it
   if (!cleaned.startsWith('254')) {
     cleaned = '254' + cleaned;
   }
@@ -83,76 +92,126 @@ function formatPhoneNumber(phone: string): string {
   return cleaned;
 }
 
-// Generate timestamp in format YYYYMMDDHHmmss
-function generateTimestamp(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
+// Register IPN URL with PesaPal (call once to set up)
+async function registerIpn(token: string): Promise<string> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const ipnUrl = `${supabaseUrl}/functions/v1/pesapal-ipn`;
   
-  return `${year}${month}${day}${hours}${minutes}${seconds}`;
-}
-
-// Initiate M-Pesa STK Push
-async function initiateStkPush(
-  token: string,
-  phoneNumber: string,
-  amount: number,
-  accountReference: string,
-  transactionDesc: string
-): Promise<MpesaStkResponse> {
-  const shortcode = Deno.env.get('MPESA_SHORTCODE')!;
-  const passkey = Deno.env.get('MPESA_PASSKEY')!;
+  const registerUrl = 'https://cybqa.pesapal.com/pesapalv3/api/URLSetup/RegisterIPN';
   
-  const timestamp = generateTimestamp();
-  const password = btoa(`${shortcode}${passkey}${timestamp}`);
-  
-  // Use sandbox URL for testing
-  const stkUrl = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest';
-  
-  // For sandbox testing, use a callback URL that just acknowledges
-  // In production, this would be your actual callback endpoint
-  const callbackUrl = 'https://webhook.site/test'; // Placeholder for sandbox
-  
-  const requestBody = {
-    BusinessShortCode: shortcode,
-    Password: password,
-    Timestamp: timestamp,
-    TransactionType: 'CustomerPayBillOnline',
-    Amount: Math.ceil(amount), // M-Pesa requires integer amounts
-    PartyA: phoneNumber,
-    PartyB: shortcode,
-    PhoneNumber: phoneNumber,
-    CallBackURL: callbackUrl,
-    AccountReference: accountReference,
-    TransactionDesc: transactionDesc,
-  };
-  
-  console.log('Initiating STK Push:', JSON.stringify({
-    ...requestBody,
-    Password: '[REDACTED]',
-  }, null, 2));
-  
-  const response = await fetch(stkUrl, {
+  const response = await fetch(registerUrl, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({
+      url: ipnUrl,
+      ipn_notification_type: 'POST',
+    }),
+  });
+  
+  const data = await response.json();
+  console.log('IPN Registration response:', JSON.stringify(data, null, 2));
+  
+  if (data.error) {
+    throw new Error(`IPN registration failed: ${data.message}`);
+  }
+  
+  return data.ipn_id;
+}
+
+// Get registered IPN ID
+async function getRegisteredIpnId(token: string): Promise<string> {
+  const listUrl = 'https://cybqa.pesapal.com/pesapalv3/api/URLSetup/GetIpnList';
+  
+  const response = await fetch(listUrl, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
+    },
+  });
+  
+  const data = await response.json();
+  console.log('IPN List:', JSON.stringify(data, null, 2));
+  
+  // If no IPNs registered, register one
+  if (!data || data.length === 0) {
+    console.log('No IPN registered, registering new one...');
+    return await registerIpn(token);
+  }
+  
+  // Return the first active IPN ID
+  const activeIpn = data.find((ipn: any) => ipn.ipn_status === 'Active');
+  if (activeIpn) {
+    return activeIpn.ipn_id;
+  }
+  
+  // Register new if no active found
+  return await registerIpn(token);
+}
+
+// Submit order to PesaPal
+async function submitOrder(
+  token: string,
+  ipnId: string,
+  orderId: string,
+  amount: number,
+  phoneNumber: string,
+  description: string,
+  email: string,
+  firstName: string
+): Promise<PesaPalOrderResponse> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const callbackUrl = `${supabaseUrl}/functions/v1/pesapal-callback`;
+  
+  const orderUrl = 'https://cybqa.pesapal.com/pesapalv3/api/Transactions/SubmitOrderRequest';
+  
+  const requestBody = {
+    id: orderId,
+    currency: 'KES',
+    amount: amount,
+    description: description,
+    callback_url: callbackUrl,
+    notification_id: ipnId,
+    billing_address: {
+      email_address: email,
+      phone_number: phoneNumber,
+      country_code: 'KE',
+      first_name: firstName,
+      middle_name: '',
+      last_name: '',
+      line_1: '',
+      line_2: '',
+      city: '',
+      state: '',
+      postal_code: '',
+      zip_code: '',
+    },
+  };
+  
+  console.log('Submitting PesaPal order:', JSON.stringify(requestBody, null, 2));
+  
+  const response = await fetch(orderUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
     body: JSON.stringify(requestBody),
   });
   
-  const responseData = await response.json();
-  console.log('STK Push response:', JSON.stringify(responseData, null, 2));
+  const data = await response.json();
+  console.log('PesaPal order response:', JSON.stringify(data, null, 2));
   
-  if (!response.ok) {
-    throw new Error(`STK Push failed: ${JSON.stringify(responseData)}`);
+  if (data.error) {
+    throw new Error(`Order submission failed: ${data.error.message || data.message}`);
   }
   
-  return responseData as MpesaStkResponse;
+  return data as PesaPalOrderResponse;
 }
 
 serve(async (req) => {
@@ -261,173 +320,105 @@ serve(async (req) => {
     // Calculate total amount
     const totalAmount = body.items.reduce((sum, item) => sum + item.amount, 0);
 
-    // Payment processing
-    switch (body.payment_method) {
-      case 'mpesa': {
-        // Validate phone number
-        if (!body.payment_details.phone) {
-          return new Response(
-            JSON.stringify({ error: 'Phone number is required for M-Pesa payment' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+    // Check PesaPal credentials
+    const pesapalConsumerKey = Deno.env.get('PESAPAL_CONSUMER_KEY');
+    const pesapalConsumerSecret = Deno.env.get('PESAPAL_CONSUMER_SECRET');
+    
+    if (!pesapalConsumerKey || !pesapalConsumerSecret) {
+      console.error('PesaPal credentials not configured');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          status: 'pending_integration',
+          message: 'Payment integration pending setup. Please contact support.'
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-        // Check if M-Pesa API credentials are configured
-        const mpesaConsumerKey = Deno.env.get('MPESA_CONSUMER_KEY');
-        const mpesaConsumerSecret = Deno.env.get('MPESA_CONSUMER_SECRET');
-        const mpesaShortcode = Deno.env.get('MPESA_SHORTCODE');
-        const mpesaPasskey = Deno.env.get('MPESA_PASSKEY');
+    // Payment processing with PesaPal (supports both M-Pesa and cards)
+    try {
+      // Get OAuth token
+      const token = await getPesaPalToken();
+      
+      // Get or register IPN
+      const ipnId = await getRegisteredIpnId(token);
+      console.log('Using IPN ID:', ipnId);
+
+      // Generate unique order ID
+      const orderId = `SLH-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Format phone number if provided
+      const phoneNumber = body.payment_details.phone 
+        ? formatPhoneNumber(body.payment_details.phone) 
+        : '';
+
+      // Create description from product titles
+      const productTitles = products.map(p => p.title).join(', ');
+      const description = `SmartLife Hub: ${productTitles}`.substring(0, 100);
+
+      // Get user email
+      const userEmail = user.email || '';
+      const firstName = userEmail.split('@')[0] || 'Customer';
+
+      // Submit order to PesaPal
+      const orderResponse = await submitOrder(
+        token,
+        ipnId,
+        orderId,
+        totalAmount,
+        phoneNumber,
+        description,
+        userEmail,
+        firstName
+      );
+
+      if (orderResponse.redirect_url) {
+        console.log('PesaPal order created successfully:', orderResponse.order_tracking_id);
+
+        // Store pending order for later verification when IPN confirms payment
+        const { error: pendingError } = await supabaseAdmin
+          .from('pending_orders')
+          .insert({
+            user_id: user.id,
+            order_tracking_id: orderResponse.order_tracking_id,
+            merchant_reference: orderId,
+            total_amount: totalAmount,
+            product_ids: productIds,
+            product_amounts: body.items.map(item => item.amount),
+            status: 'pending',
+          });
+
+        if (pendingError) {
+          console.error('Failed to store pending order:', pendingError);
+          // Don't fail the payment - just log the error
+        } else {
+          console.log('Pending order stored successfully');
+        }
         
-        if (!mpesaConsumerKey || !mpesaConsumerSecret || !mpesaShortcode || !mpesaPasskey) {
-          console.error('M-Pesa credentials not fully configured');
-          return new Response(
-            JSON.stringify({ 
-              success: false, 
-              status: 'pending_integration',
-              message: 'M-Pesa integration pending setup. Please contact support.'
-            }),
-            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        try {
-          // Format phone number
-          const formattedPhone = formatPhoneNumber(body.payment_details.phone);
-          console.log('Formatted phone number:', formattedPhone);
-
-          // Get OAuth token
-          const token = await getMpesaToken();
-
-          // Create account reference from product titles
-          const productTitles = products.map(p => p.title).join(', ');
-          const accountReference = productTitles.substring(0, 12) || 'SmartLifeHub';
-          const transactionDesc = `Payment for ${products.length} product(s)`;
-
-          // Initiate STK Push
-          const stkResponse = await initiateStkPush(
-            token,
-            formattedPhone,
-            totalAmount,
-            accountReference,
-            transactionDesc
-          );
-
-          // Check STK Push response
-          if (stkResponse.ResponseCode === '0') {
-            // STK Push initiated successfully
-            // In sandbox, we'll simulate success for testing
-            // In production, you would wait for the callback or poll for status
-            
-            console.log('STK Push initiated successfully:', stkResponse.CheckoutRequestID);
-
-            // For sandbox testing, we'll create the purchase record immediately
-            // In production, this should happen only after callback confirmation
-            const transactionId = stkResponse.CheckoutRequestID;
-            
-            // Check which products user already owns (to avoid duplicate purchase error)
-            const { data: existingPurchases } = await supabaseAdmin
-              .from('purchases')
-              .select('product_id')
-              .eq('user_id', user.id)
-              .in('product_id', productIds);
-            
-            const ownedProductIds = new Set(existingPurchases?.map(p => p.product_id) || []);
-            
-            // Filter out already owned products
-            const newPurchases = body.items
-              .filter(item => !ownedProductIds.has(item.product_id))
-              .map(item => ({
-                user_id: user.id,
-                product_id: item.product_id,
-                amount: item.amount,
-                payment_method: 'mpesa',
-                transaction_id: transactionId,
-              }));
-
-            // Only insert if there are new purchases
-            if (newPurchases.length > 0) {
-              const { error: insertError } = await supabaseAdmin
-                .from('purchases')
-                .insert(newPurchases);
-
-              if (insertError) {
-                console.error('Failed to create purchase records:', insertError);
-                return new Response(
-                  JSON.stringify({ error: 'Payment recorded but failed to save purchase. Please contact support.' }),
-                  { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                );
-              }
-            }
-            
-            // If all products were already owned
-            if (newPurchases.length === 0) {
-              console.log('User already owns all products in cart');
-              return new Response(
-                JSON.stringify({ 
-                  success: true, 
-                  transaction_id: transactionId,
-                  message: 'You already own these products! Go to your Purchase History to download them.'
-                }),
-                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-              );
-            }
-
-            console.log('Purchase records created successfully');
-
-            return new Response(
-              JSON.stringify({ 
-                success: true, 
-                transaction_id: transactionId,
-                checkout_request_id: stkResponse.CheckoutRequestID,
-                message: stkResponse.CustomerMessage || 'Please check your phone and enter your M-Pesa PIN to complete payment.'
-              }),
-              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
-          } else {
-            // STK Push failed
-            console.error('STK Push failed with response code:', stkResponse.ResponseCode);
-            return new Response(
-              JSON.stringify({ 
-                success: false, 
-                error: stkResponse.ResponseDescription || 'Failed to initiate M-Pesa payment'
-              }),
-              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
-          }
-        } catch (mpesaError) {
-          console.error('M-Pesa processing error:', mpesaError);
-          return new Response(
-            JSON.stringify({ 
-              success: false, 
-              error: mpesaError instanceof Error ? mpesaError.message : 'M-Pesa payment failed'
-            }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-      }
-
-      case 'card':
-        // Card payment processing
-        console.log('Card payment requested.');
-        console.log('Card Name:', body.payment_details.cardName);
-        // Note: In production, never log full card numbers
-        console.log('Card ending:', body.payment_details.cardNumber?.slice(-4));
-        
-        // TODO: Integrate with a payment gateway (e.g., Flutterwave, Paystack)
         return new Response(
           JSON.stringify({ 
-            success: false, 
-            status: 'pending_integration',
-            message: 'Card payment integration is being set up. Please use M-Pesa to complete your purchase.'
+            success: true, 
+            redirect_url: orderResponse.redirect_url,
+            order_tracking_id: orderResponse.order_tracking_id,
+            merchant_reference: orderResponse.merchant_reference,
+            message: 'Redirecting to payment page...'
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      } else {
+        throw new Error('No redirect URL received from PesaPal');
+      }
 
-      default:
-        return new Response(
-          JSON.stringify({ error: 'Unsupported payment method' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+    } catch (pesapalError) {
+      console.error('PesaPal processing error:', pesapalError);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: pesapalError instanceof Error ? pesapalError.message : 'Payment processing failed'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
   } catch (error) {

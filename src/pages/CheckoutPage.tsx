@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Smartphone, CheckCircle, Lock, Download, Loader2, AlertTriangle, CreditCard } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,7 @@ const CheckoutPage = () => {
   const { items, getTotalPrice, clearCart } = useCart();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mpesa');
   const [isProcessing, setIsProcessing] = useState(false);
   const [purchaseComplete, setPurchaseComplete] = useState(false);
@@ -53,6 +54,49 @@ const CheckoutPage = () => {
     expiryDate: '',
     cvc: '',
   });
+
+  // Handle PesaPal callback
+  useEffect(() => {
+    const paymentStatus = searchParams.get('payment');
+    const orderId = searchParams.get('order');
+    
+    if (paymentStatus === 'success' && orderId) {
+      // Payment completed - fetch user's purchases and show success
+      const fetchPurchases = async () => {
+        if (!user) return;
+        
+        const { data: purchases } = await supabase
+          .from('purchases')
+          .select('product_id, products(id, title, pdf_url)')
+          .eq('user_id', user.id)
+          .order('purchased_at', { ascending: false })
+          .limit(10);
+        
+        if (purchases && purchases.length > 0) {
+          const products: PurchasedProduct[] = purchases.map((p: any) => ({
+            id: p.products.id,
+            title: p.products.title,
+            pdf_url: p.products.pdf_url,
+          }));
+          setPurchasedProducts(products);
+          setPurchaseComplete(true);
+          clearCart();
+          toast({
+            title: 'Payment Successful!',
+            description: 'Your products are ready for download.',
+          });
+        }
+      };
+      
+      fetchPurchases();
+    } else if (paymentStatus === 'error') {
+      toast({
+        title: 'Payment Failed',
+        description: 'Something went wrong with your payment. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  }, [searchParams, user, clearCart]);
 
   const totalPrice = getTotalPrice();
   
@@ -164,8 +208,18 @@ const CheckoutPage = () => {
 
       console.log('Payment response:', data);
 
-      if (data.success) {
-        // Payment was successful - products are unlocked
+      if (data.success && data.redirect_url) {
+        // PesaPal redirect-based flow - redirect to payment page
+        toast({
+          title: 'Redirecting to Payment',
+          description: 'You will be redirected to complete your payment...',
+        });
+        
+        // Redirect to PesaPal payment page
+        window.location.href = data.redirect_url;
+        return;
+      } else if (data.success) {
+        // Direct success (fallback for other payment methods)
         const products: PurchasedProduct[] = items.map(item => ({
           id: item.product.id,
           title: item.product.title,
