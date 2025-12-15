@@ -21,8 +21,8 @@ serve(async (req) => {
 
     console.log('Callback params:', { orderTrackingId, orderMerchantReference });
 
-    // Get the app URL from environment or construct it
-    const appUrl = Deno.env.get('APP_URL') || 'https://smartlifehub.lovable.app';
+    // Get the app URL - use the actual Lovable app URL
+    const appUrl = Deno.env.get('APP_URL') || 'https://wpczgwxsriezaubncuom.lovable.app';
 
     // Redirect back to the app with payment status
     // The app will handle checking the payment status
@@ -39,7 +39,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Callback processing error:', error);
     
-    const appUrl = Deno.env.get('APP_URL') || 'https://smartlifehub.lovable.app';
+    const appUrl = Deno.env.get('APP_URL') || 'https://wpczgwxsriezaubncuom.lovable.app';
     const redirectUrl = `${appUrl}/checkout?payment=error`;
 
     return new Response(null, {
