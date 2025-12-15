@@ -38,16 +38,24 @@ interface PesaPalOrderResponse {
   status: string;
 }
 
+// Cache token + IPN ID to reduce payment latency
+let cachedToken: { token: string; expiresAt: number } | null = null;
+let cachedIpnId: string | null = null;
+
 // Get PesaPal OAuth token
 async function getPesaPalToken(): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt) {
+    return cachedToken.token;
+  }
+
   const consumerKey = Deno.env.get('PESAPAL_CONSUMER_KEY')!;
   const consumerSecret = Deno.env.get('PESAPAL_CONSUMER_SECRET')!;
-  
+
   // Production/Live URL
   const tokenUrl = 'https://pay.pesapal.com/v3/api/Auth/RequestToken';
-  
+
   console.log('Fetching PesaPal OAuth token...');
-  
+
   const response = await fetch(tokenUrl, {
     method: 'POST',
     headers: {
@@ -59,20 +67,28 @@ async function getPesaPalToken(): Promise<string> {
       consumer_secret: consumerSecret,
     }),
   });
-  
+
   if (!response.ok) {
     const errorText = await response.text();
     console.error('PesaPal token error:', errorText);
     throw new Error(`Failed to get PesaPal token: ${response.status}`);
   }
-  
+
   const data: PesaPalAuthResponse = await response.json();
-  
+
   if (data.error) {
     console.error('PesaPal token error:', data.error);
     throw new Error(`PesaPal auth failed: ${data.message}`);
   }
-  
+
+  // Pesapal returns an expiryDate string; cache until 60s before expiry
+  const expiryMs = Date.parse(data.expiryDate);
+  const expiresAt = Number.isFinite(expiryMs)
+    ? Math.max(Date.now() + 60_000, expiryMs - 60_000)
+    : Date.now() + 20 * 60_000;
+
+  cachedToken = { token: data.token, expiresAt };
+
   console.log('PesaPal token obtained successfully');
   return data.token;
 }
@@ -124,8 +140,10 @@ async function registerIpn(token: string): Promise<string> {
 
 // Get registered IPN ID
 async function getRegisteredIpnId(token: string): Promise<string> {
+  if (cachedIpnId) return cachedIpnId;
+
   const listUrl = 'https://pay.pesapal.com/v3/api/URLSetup/GetIpnList';
-  
+
   const response = await fetch(listUrl, {
     method: 'GET',
     headers: {
@@ -133,24 +151,35 @@ async function getRegisteredIpnId(token: string): Promise<string> {
       'Accept': 'application/json',
     },
   });
-  
+
   const data = await response.json();
   console.log('IPN List:', JSON.stringify(data, null, 2));
-  
+
   // If no IPNs registered, register one
   if (!data || data.length === 0) {
     console.log('No IPN registered, registering new one...');
-    return await registerIpn(token);
+    cachedIpnId = await registerIpn(token);
+    return cachedIpnId;
   }
-  
-  // Return the first active IPN ID
-  const activeIpn = data.find((ipn: any) => ipn.ipn_status === 'Active');
-  if (activeIpn) {
-    return activeIpn.ipn_id;
+
+  // Pesapal can return either numeric status (1) or string status
+  const activeIpn = data.find((ipn: any) => {
+    const status = ipn?.ipn_status;
+    const statusDesc = String(
+      ipn?.ipn_status_decription ?? ipn?.ipn_status_description ?? ''
+    ).toLowerCase();
+
+    return status === 1 || String(status).toLowerCase() === 'active' || statusDesc === 'active';
+  });
+
+  if (activeIpn?.ipn_id) {
+    cachedIpnId = activeIpn.ipn_id;
+    return cachedIpnId;
   }
-  
+
   // Register new if no active found
-  return await registerIpn(token);
+  cachedIpnId = await registerIpn(token);
+  return cachedIpnId;
 }
 
 // Submit order to PesaPal
@@ -162,13 +191,19 @@ async function submitOrder(
   phoneNumber: string,
   description: string,
   email: string,
-  firstName: string
+  firstName: string,
+  returnTo?: string
 ): Promise<PesaPalOrderResponse> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const callbackUrl = `${supabaseUrl}/functions/v1/pesapal-callback`;
-  
+  const callbackBaseUrl = `${supabaseUrl}/functions/v1/pesapal-callback`;
+
+  // Tell callback which site to return to (prevents redirecting to the wrong domain)
+  const callbackUrl = returnTo
+    ? `${callbackBaseUrl}?return_to=${encodeURIComponent(returnTo)}`
+    : callbackBaseUrl;
+
   const orderUrl = 'https://pay.pesapal.com/v3/api/Transactions/SubmitOrderRequest';
-  
+
   const requestBody = {
     id: orderId,
     currency: 'KES',
@@ -191,9 +226,9 @@ async function submitOrder(
       zip_code: '',
     },
   };
-  
+
   console.log('Submitting PesaPal order:', JSON.stringify(requestBody, null, 2));
-  
+
   const response = await fetch(orderUrl, {
     method: 'POST',
     headers: {
@@ -203,14 +238,14 @@ async function submitOrder(
     },
     body: JSON.stringify(requestBody),
   });
-  
+
   const data = await response.json();
   console.log('PesaPal order response:', JSON.stringify(data, null, 2));
-  
+
   if (data.error) {
     throw new Error(`Order submission failed: ${data.error.message || data.message}`);
   }
-  
+
   return data as PesaPalOrderResponse;
 }
 
@@ -361,6 +396,21 @@ serve(async (req) => {
       const userEmail = user.email || '';
       const firstName = userEmail.split('@')[0] || 'Customer';
 
+      // Use request origin as the return-to domain so the callback returns users to the same site
+      const returnTo = (() => {
+        const origin = req.headers.get('origin');
+        if (origin) return origin;
+        const referer = req.headers.get('referer');
+        if (referer) {
+          try {
+            return new URL(referer).origin;
+          } catch {
+            return undefined;
+          }
+        }
+        return undefined;
+      })();
+
       // Submit order to PesaPal
       const orderResponse = await submitOrder(
         token,
@@ -370,7 +420,8 @@ serve(async (req) => {
         phoneNumber,
         description,
         userEmail,
-        firstName
+        firstName,
+        returnTo
       );
 
       if (orderResponse.redirect_url) {
