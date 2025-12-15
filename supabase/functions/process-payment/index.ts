@@ -324,24 +324,51 @@ serve(async (req) => {
             // In production, this should happen only after callback confirmation
             const transactionId = stkResponse.CheckoutRequestID;
             
-            // Create purchase records using service role
-            const purchases = body.items.map(item => ({
-              user_id: user.id,
-              product_id: item.product_id,
-              amount: item.amount,
-              payment_method: 'mpesa',
-              transaction_id: transactionId,
-            }));
-
-            const { error: insertError } = await supabaseAdmin
+            // Check which products user already owns (to avoid duplicate purchase error)
+            const { data: existingPurchases } = await supabaseAdmin
               .from('purchases')
-              .insert(purchases);
+              .select('product_id')
+              .eq('user_id', user.id)
+              .in('product_id', productIds);
+            
+            const ownedProductIds = new Set(existingPurchases?.map(p => p.product_id) || []);
+            
+            // Filter out already owned products
+            const newPurchases = body.items
+              .filter(item => !ownedProductIds.has(item.product_id))
+              .map(item => ({
+                user_id: user.id,
+                product_id: item.product_id,
+                amount: item.amount,
+                payment_method: 'mpesa',
+                transaction_id: transactionId,
+              }));
 
-            if (insertError) {
-              console.error('Failed to create purchase records:', insertError);
+            // Only insert if there are new purchases
+            if (newPurchases.length > 0) {
+              const { error: insertError } = await supabaseAdmin
+                .from('purchases')
+                .insert(newPurchases);
+
+              if (insertError) {
+                console.error('Failed to create purchase records:', insertError);
+                return new Response(
+                  JSON.stringify({ error: 'Payment recorded but failed to save purchase. Please contact support.' }),
+                  { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+              }
+            }
+            
+            // If all products were already owned
+            if (newPurchases.length === 0) {
+              console.log('User already owns all products in cart');
               return new Response(
-                JSON.stringify({ error: 'Payment recorded but failed to save purchase. Please contact support.' }),
-                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                JSON.stringify({ 
+                  success: true, 
+                  transaction_id: transactionId,
+                  message: 'You already own these products! Go to your Purchase History to download them.'
+                }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
               );
             }
 
