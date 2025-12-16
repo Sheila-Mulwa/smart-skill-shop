@@ -32,8 +32,8 @@ async function getMpesaToken(): Promise<string> {
   
   const auth = btoa(`${consumerKey}:${consumerSecret}`);
   
-  // Production URL
-  const tokenUrl = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+  // Sandbox URL (switch to api.safaricom.co.ke for production)
+  const tokenUrl = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
 
   console.log('Fetching M-Pesa OAuth token...');
 
@@ -121,7 +121,7 @@ async function initiateSTKPush(
 
   console.log('Initiating STK Push:', JSON.stringify({ ...requestBody, Password: '[REDACTED]' }, null, 2));
 
-  const response = await fetch('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
+  const response = await fetch('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
