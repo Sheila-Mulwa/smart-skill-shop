@@ -3,6 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import type { Product } from '@/types/product';
 
+// Columns to select from products table (excludes pdf_url for security)
+const PRODUCT_COLUMNS = 'id, title, description, price, price_usd, category, author, format, pages, level, tags, featured, cover_url, downloads, created_at, updated_at';
+
 export interface SupabaseProduct {
   id: string;
   title: string;
@@ -16,7 +19,6 @@ export interface SupabaseProduct {
   level: string | null;
   tags: string[] | null;
   featured: boolean | null;
-  pdf_url: string;
   cover_url: string | null;
   downloads: number | null;
   created_at: string;
@@ -56,7 +58,7 @@ export const useProducts = () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('products')
-        .select('*')
+        .select(PRODUCT_COLUMNS)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -93,7 +95,7 @@ export const useProduct = (productId: string | undefined) => {
         setLoading(true);
         const { data, error } = await supabase
           .from('products')
-          .select('*')
+          .select(PRODUCT_COLUMNS)
           .eq('id', productId)
           .single();
 
@@ -130,7 +132,7 @@ export const useProductsByCategory = (categoryId: string | undefined) => {
         setLoading(true);
         const { data, error } = await supabase
           .from('products')
-          .select('*')
+          .select(PRODUCT_COLUMNS)
           .eq('category', categoryId)
           .order('created_at', { ascending: false });
 
@@ -162,7 +164,7 @@ export const useFeaturedProducts = () => {
         setLoading(true);
         const { data, error } = await supabase
           .from('products')
-          .select('*')
+          .select(PRODUCT_COLUMNS)
           .eq('featured', true)
           .order('created_at', { ascending: false })
           .limit(8);
@@ -187,7 +189,7 @@ export const useFeaturedProducts = () => {
 export const searchProducts = async (query: string): Promise<Product[]> => {
   const { data, error } = await supabase
     .from('products')
-    .select('*')
+    .select(PRODUCT_COLUMNS)
     .or(`title.ilike.%${query}%,description.ilike.%${query}%,author.ilike.%${query}%`)
     .order('created_at', { ascending: false });
 
