@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Smartphone, CheckCircle, Lock, Download, Loader2, AlertTriangle } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
@@ -20,117 +22,72 @@ const CheckoutPage = () => {
   const { items, getTotalPrice, clearCart } = useCart();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [isProcessing, setIsProcessing] = useState(false);
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [purchasedProducts, setPurchasedProducts] = useState<PurchasedProduct[]>([]);
   const [pendingIntegration, setPendingIntegration] = useState(false);
-  const [verifyingPayment, setVerifyingPayment] = useState(false);
+  const [awaitingPayment, setAwaitingPayment] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const { downloadProduct, isDownloading, downloadingId } = useSecureDownload();
   const { rate: exchangeRate } = useExchangeRate();
 
-  
-
-  // Handle PesaPal callback with real-time listening for faster confirmation
+  // Listen for purchase confirmation in real-time
   useEffect(() => {
-    const paymentStatus = searchParams.get('payment');
-    const orderId = searchParams.get('order');
-    
-    if (paymentStatus === 'success' && orderId && user) {
-      setVerifyingPayment(true);
-      
-      // Set up real-time listener for instant purchase confirmation
-      const channel = supabase
-        .channel('purchase-confirmation')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'purchases',
-            filter: `user_id=eq.${user.id}`,
-          },
-          async (payload) => {
-            // Purchase confirmed! Fetch product details
-            const { data: purchase } = await supabase
-              .from('purchases')
-              .select('product_id, products(id, title, pdf_url)')
-              .eq('id', payload.new.id)
-              .single();
-            
-            if (purchase) {
-              const product: PurchasedProduct = {
-                id: (purchase.products as any).id,
-                title: (purchase.products as any).title,
-                pdf_url: (purchase.products as any).pdf_url,
-              };
-              setPurchasedProducts(prev => [...prev, product]);
-              setPurchaseComplete(true);
-              setVerifyingPayment(false);
-              clearCart();
-              toast({
-                title: 'Payment Successful!',
-                description: 'Your product is ready for download.',
-              });
-            }
+    if (!user || !awaitingPayment) return;
+
+    const channel = supabase
+      .channel('purchase-confirmation')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'purchases',
+          filter: `user_id=eq.${user.id}`,
+        },
+        async (payload) => {
+          console.log('Purchase detected:', payload);
+          
+          const { data: purchase } = await supabase
+            .from('purchases')
+            .select('product_id, products(id, title, pdf_url)')
+            .eq('id', payload.new.id)
+            .single();
+          
+          if (purchase) {
+            const product: PurchasedProduct = {
+              id: (purchase.products as any).id,
+              title: (purchase.products as any).title,
+              pdf_url: (purchase.products as any).pdf_url,
+            };
+            setPurchasedProducts(prev => {
+              const exists = prev.some(p => p.id === product.id);
+              return exists ? prev : [...prev, product];
+            });
+            setPurchaseComplete(true);
+            setAwaitingPayment(false);
+            clearCart();
+            toast({
+              title: 'Payment Successful!',
+              description: 'Your product is ready for download.',
+            });
           }
-        )
-        .subscribe();
-
-      // Also check immediately in case purchase was already recorded
-      const checkExistingPurchases = async () => {
-        const { data: purchases } = await supabase
-          .from('purchases')
-          .select('product_id, products(id, title, pdf_url)')
-          .eq('user_id', user.id)
-          .order('purchased_at', { ascending: false })
-          .limit(10);
-        
-        if (purchases && purchases.length > 0) {
-          const products: PurchasedProduct[] = purchases.map((p: any) => ({
-            id: p.products.id,
-            title: p.products.title,
-            pdf_url: p.products.pdf_url,
-          }));
-          setPurchasedProducts(products);
-          setPurchaseComplete(true);
-          setVerifyingPayment(false);
-          clearCart();
-          toast({
-            title: 'Payment Successful!',
-            description: 'Your products are ready for download.',
-          });
         }
-      };
-      
-      // Check after a short delay
-      setTimeout(checkExistingPurchases, 500);
+      )
+      .subscribe();
 
-      // Cleanup
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    } else if (paymentStatus === 'error') {
-      toast({
-        title: 'Payment Failed',
-        description: 'Something went wrong with your payment. Please try again.',
-        variant: 'destructive',
-      });
-    }
-  }, [searchParams, user, clearCart]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, awaitingPayment, clearCart]);
 
   const totalPrice = getTotalPrice();
-  
-  // Calculate total USD price using real exchange rate
   const totalUsd = totalPrice * exchangeRate;
 
-  // Don't redirect to cart if we're processing a payment callback
-  const paymentStatus = searchParams.get('payment');
-  if (!purchaseComplete && !pendingIntegration && !verifyingPayment && items.length === 0 && !paymentStatus) {
+  if (!purchaseComplete && !pendingIntegration && !awaitingPayment && items.length === 0) {
     navigate('/cart');
     return null;
   }
-
 
   const handleDownload = async (productId: string, title: string) => {
     await downloadProduct(productId, title);
@@ -145,11 +102,14 @@ const CheckoutPage = () => {
       return;
     }
 
-    
+    if (!phoneNumber.trim()) {
+      toast({ title: 'Phone number required', description: 'Please enter your M-Pesa phone number', variant: 'destructive' });
+      return;
+    }
+
     setIsProcessing(true);
     
     try {
-      // Get the current session for auth
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         toast({ title: 'Session expired', description: 'Please login again', variant: 'destructive' });
@@ -165,7 +125,9 @@ const CheckoutPage = () => {
             amount: item.product.price * item.quantity,
             quantity: item.quantity,
           })),
-          payment_details: {},
+          payment_details: {
+            phone: phoneNumber,
+          },
         },
       });
 
@@ -181,43 +143,22 @@ const CheckoutPage = () => {
 
       console.log('Payment response:', data);
 
-      if (data.success && data.redirect_url) {
-        // PesaPal redirect-based flow - redirect to payment page
+      if (data.success && data.status === 'stk_sent') {
+        setAwaitingPayment(true);
         toast({
-          title: 'Redirecting to Payment',
-          description: 'You will be redirected to complete your payment...',
-        });
-        
-        // Redirect to PesaPal payment page
-        window.location.href = data.redirect_url;
-        return;
-      } else if (data.success) {
-        // Direct success (fallback for other payment methods)
-        const products: PurchasedProduct[] = items.map(item => ({
-          id: item.product.id,
-          title: item.product.title,
-          pdf_url: (item.product as any).pdfUrl || (item.product as any).pdf_url || '',
-        }));
-
-        setPurchasedProducts(products);
-        setPurchaseComplete(true);
-        clearCart();
-
-        toast({
-          title: 'Purchase Complete!',
-          description: 'Your products are ready for download below.',
+          title: 'Check Your Phone',
+          description: 'Enter your M-Pesa PIN to complete the payment.',
         });
       } else if (data.status === 'pending_integration') {
-        // Payment integration is pending
         setPendingIntegration(true);
         toast({
           title: 'Payment Processing Required',
-          description: data.message || 'Payment integration is being set up. Please contact support.',
+          description: data.message || 'Payment integration is being set up.',
         });
       } else {
         toast({
-          title: 'Payment Not Completed',
-          description: data.message || 'Payment could not be processed. Please try again.',
+          title: 'Payment Failed',
+          description: data.error || data.message || 'Could not initiate payment.',
           variant: 'destructive',
         });
       }
@@ -233,7 +174,6 @@ const CheckoutPage = () => {
     }
   };
 
-  // Show pending integration message
   if (pendingIntegration) {
     return (
       <Layout>
@@ -246,15 +186,12 @@ const CheckoutPage = () => {
             </div>
             <h1 className="mb-4 text-3xl font-bold text-foreground">Payment Setup In Progress</h1>
             <p className="mb-4 text-muted-foreground">
-              Our payment system is currently being configured. Your order has been noted.
+              Our M-Pesa payment system is currently being configured.
             </p>
             <div className="rounded-xl border border-border bg-card p-6 text-left">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">What happens next?</h2>
+              <h2 className="mb-4 text-lg font-semibold text-foreground">Contact Us</h2>
               <ul className="space-y-2 text-muted-foreground">
-                <li>• Our team is setting up secure M-Pesa integration</li>
-                <li>• You can contact us directly to complete your purchase</li>
                 <li>• Email: pointresearchlimited@gmail.com</li>
-                <li>• Once payment is confirmed, you'll get instant access</li>
               </ul>
             </div>
             <div className="mt-8 flex justify-center gap-4">
@@ -271,8 +208,7 @@ const CheckoutPage = () => {
     );
   }
 
-  // Show verifying payment state
-  if (verifyingPayment) {
+  if (awaitingPayment) {
     return (
       <Layout>
         <div className="container py-12">
@@ -282,16 +218,19 @@ const CheckoutPage = () => {
                 <Loader2 className="h-10 w-10 text-primary animate-spin" />
               </div>
             </div>
-            <h1 className="mb-4 text-3xl font-bold text-foreground">Verifying Payment...</h1>
+            <h1 className="mb-4 text-3xl font-bold text-foreground">Waiting for Payment...</h1>
             <p className="mb-8 text-muted-foreground">
-              Please wait while we confirm your payment. This may take a few seconds.
+              A payment request has been sent to your phone. Enter your M-Pesa PIN to complete the payment.
             </p>
             <div className="rounded-xl border border-border bg-card p-6">
               <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                <CheckCircle className="h-5 w-5 text-green-500" />
-                <span>Payment received - preparing your downloads...</span>
+                <Smartphone className="h-5 w-5 text-green-500" />
+                <span>Check your phone for the M-Pesa prompt</span>
               </div>
             </div>
+            <Button variant="outline" className="mt-6" onClick={() => setAwaitingPayment(false)}>
+              Try Again
+            </Button>
           </div>
         </div>
       </Layout>
@@ -367,18 +306,31 @@ const CheckoutPage = () => {
               <div className="rounded-xl border border-border bg-card p-6">
                 <h2 className="mb-4 text-lg font-semibold text-foreground">Payment Method</h2>
                 
-                {/* PesaPal - Single Payment Option */}
-                <div className="flex items-center gap-4 rounded-lg border border-primary bg-primary/5 p-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <div className="flex items-center gap-4 rounded-lg border border-primary bg-primary/5 p-4 mb-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-600 text-white">
                     <Smartphone className="h-5 w-5" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-foreground">PesaPal</p>
-                    <p className="text-sm text-muted-foreground">Pay with M-Pesa, Card, or Bank</p>
+                    <p className="font-medium text-foreground">M-Pesa</p>
+                    <p className="text-sm text-muted-foreground">Pay directly from your phone</p>
                   </div>
                   <CheckCircle className="h-5 w-5 text-primary" />
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="phone">M-Pesa Phone Number</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="0712345678"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter the phone number registered with M-Pesa
+                  </p>
+                </div>
               </div>
 
               <Button type="submit" variant="hero" size="xl" className="w-full" disabled={isProcessing}>
@@ -394,7 +346,7 @@ const CheckoutPage = () => {
 
               <p className="text-center text-xs text-muted-foreground">
                 <Lock className="mr-1 inline h-3 w-3" />
-                Your payment is processed securely on our servers
+                Secure M-Pesa payment
               </p>
             </form>
           </div>

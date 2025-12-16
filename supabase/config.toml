@@ -12,8 +12,5 @@ verify_jwt = false
 [functions.process-payment]
 verify_jwt = false
 
-[functions.pesapal-ipn]
-verify_jwt = false
-
-[functions.pesapal-callback]
+[functions.mpesa-callback]
 verify_jwt = false
