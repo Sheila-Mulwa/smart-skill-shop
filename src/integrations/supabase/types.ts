@@ -151,6 +151,59 @@ export type Database = {
           },
         ]
       }
+      telegram_orders: {
+        Row: {
+          amount: number
+          chat_id: number
+          checkout_request_id: string | null
+          created_at: string
+          id: string
+          merchant_reference: string
+          phone_number: string
+          product_id: string
+          product_title: string
+          status: string
+          transaction_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          chat_id: number
+          checkout_request_id?: string | null
+          created_at?: string
+          id?: string
+          merchant_reference: string
+          phone_number: string
+          product_id: string
+          product_title: string
+          status?: string
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          chat_id?: number
+          checkout_request_id?: string | null
+          created_at?: string
+          id?: string
+          merchant_reference?: string
+          phone_number?: string
+          product_id?: string
+          product_title?: string
+          status?: string
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_orders_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
