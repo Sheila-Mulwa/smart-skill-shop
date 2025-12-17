@@ -41,10 +41,12 @@ interface UserSession {
   phoneNumber?: string;
 }
 
-// In-memory session store (for demo - in production use Redis or database)
+// In-memory session store
 const sessions = new Map<number, UserSession>();
 
 async function sendMessage(chatId: number, text: string, options?: Record<string, unknown>) {
+  console.log(`Sending message to ${chatId}: ${text.substring(0, 50)}...`);
+  
   const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -56,7 +58,7 @@ async function sendMessage(chatId: number, text: string, options?: Record<string
     }),
   });
   const result = await response.json();
-  console.log('Send message result:', result);
+  console.log('Send message result:', JSON.stringify(result));
   return result;
 }
 
@@ -94,7 +96,8 @@ interface ProductResult {
 }
 
 async function findProductBySlug(supabaseClient: any, slug: string): Promise<ProductResult | null> {
-  // First try exact slug match by converting titles to slugs
+  console.log('Searching for product with slug:', slug);
+  
   const { data: products, error } = await supabaseClient
     .from('products')
     .select('id, title, price, price_usd, description, category, pdf_url');
@@ -104,9 +107,36 @@ async function findProductBySlug(supabaseClient: any, slug: string): Promise<Pro
     return null;
   }
 
+  console.log(`Found ${products?.length || 0} products`);
+  
   // Find product where slugified title matches
-  const product = (products as ProductResult[])?.find((p: ProductResult) => slugify(p.title) === slug);
+  const product = (products as ProductResult[])?.find((p: ProductResult) => {
+    const productSlug = slugify(p.title);
+    console.log(`Comparing: "${productSlug}" with "${slug}"`);
+    return productSlug === slug;
+  });
+  
+  if (product) {
+    console.log('Found matching product:', product.title);
+  } else {
+    console.log('No matching product found for slug:', slug);
+  }
+  
   return product || null;
+}
+
+async function getAllProducts(supabaseClient: any): Promise<ProductResult[]> {
+  const { data: products, error } = await supabaseClient
+    .from('products')
+    .select('id, title, price, price_usd, description, category, pdf_url')
+    .limit(10);
+
+  if (error) {
+    console.error('Error fetching products:', error);
+    return [];
+  }
+
+  return products || [];
 }
 
 async function getMpesaToken(): Promise<string> {
@@ -115,8 +145,9 @@ async function getMpesaToken(): Promise<string> {
   
   const credentials = btoa(`${consumerKey}:${consumerSecret}`);
   
+  // Use production URL
   const response = await fetch(
-    'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
+    'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
     {
       method: 'GET',
       headers: {
@@ -126,6 +157,7 @@ async function getMpesaToken(): Promise<string> {
   );
 
   const data = await response.json();
+  console.log('M-Pesa token response:', data.access_token ? 'Token received' : 'No token');
   return data.access_token;
 }
 
@@ -158,11 +190,12 @@ async function initiateSTKPush(
   accessToken: string,
   phoneNumber: string,
   amount: number,
-  accountReference: string,
   transactionDesc: string
 ) {
-  const shortcode = Deno.env.get('MPESA_SHORTCODE') || '174379';
+  // Use your Paybill and Account Number for bank settlement
+  const shortcode = Deno.env.get('MPESA_PAYBILL') || Deno.env.get('MPESA_SHORTCODE')!;
   const passkey = Deno.env.get('MPESA_PASSKEY')!;
+  const accountNumber = Deno.env.get('MPESA_ACCOUNT_NUMBER') || 'SmartLifeHub';
   const timestamp = getTimestamp();
   const password = btoa(`${shortcode}${passkey}${timestamp}`);
   
@@ -179,14 +212,15 @@ async function initiateSTKPush(
     PartyB: shortcode,
     PhoneNumber: phoneNumber,
     CallBackURL: callbackUrl,
-    AccountReference: accountReference,
+    AccountReference: accountNumber, // Your bank account number
     TransactionDesc: transactionDesc,
   };
 
-  console.log('STK Push request:', JSON.stringify(stkPushData, null, 2));
+  console.log('STK Push request with Paybill:', shortcode, 'Account:', accountNumber);
 
+  // Use production URL
   const response = await fetch(
-    'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
+    'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
     {
       method: 'POST',
       headers: {
@@ -198,7 +232,7 @@ async function initiateSTKPush(
   );
 
   const result = await response.json();
-  console.log('STK Push response:', result);
+  console.log('STK Push response:', JSON.stringify(result));
   return result;
 }
 
@@ -213,24 +247,30 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const update: TelegramUpdate = await req.json();
-    console.log('Telegram update:', JSON.stringify(update, null, 2));
+    console.log('Telegram update received:', JSON.stringify(update, null, 2));
 
     const message = update.message;
     if (!message) {
+      console.log('No message in update');
       return new Response('OK', { status: 200 });
     }
 
     const chatId = message.chat.id;
     const text = message.text || '';
     const contact = message.contact;
+    const firstName = message.from.first_name;
+
+    console.log(`Processing message from ${firstName} (${chatId}): ${text}`);
 
     // Get or create session
     let session = sessions.get(chatId) || { chatId, awaitingPhone: false };
 
-    // Handle /start command with product slug
+    // Handle /start command
     if (text.startsWith('/start')) {
       const parts = text.split(' ');
+      
       if (parts.length > 1) {
+        // /start with product slug
         const productSlug = parts[1];
         console.log('Looking for product with slug:', productSlug);
         
@@ -260,16 +300,67 @@ serve(async (req) => {
         } else {
           await sendMessage(chatId, 
             `❌ Sorry, product "${productSlug}" not found.\n\n` +
-            `Visit our channel @getyourhacks to see available products.`
+            `📱 Type /products to see available products.`
           );
         }
       } else {
         // Just /start without product
         await sendMessage(chatId,
-          `👋 Welcome to <b>SmartLife Hub</b>!\n\n` +
-          `🛍️ Browse our products at @getyourhacks\n\n` +
+          `👋 Welcome to <b>SmartLife Hub</b>, ${firstName}!\n\n` +
+          `🛍️ We sell digital products - ebooks, guides, and courses.\n\n` +
+          `📱 Type /products to see what's available\n` +
+          `🔗 Or visit our channel @getyourhacks to browse\n\n` +
           `Click on any product link to start your purchase!`
         );
+      }
+    }
+    // Handle /products command
+    else if (text === '/products') {
+      const products = await getAllProducts(supabase);
+      
+      if (products.length > 0) {
+        let productList = '📚 <b>Available Products:</b>\n\n';
+        products.forEach((p, index) => {
+          const slug = slugify(p.title);
+          productList += `${index + 1}. <b>${p.title}</b>\n`;
+          productList += `   💰 KSh ${p.price.toLocaleString()}\n`;
+          productList += `   🔗 /buy_${slug}\n\n`;
+        });
+        productList += `\nClick any /buy_... link above to purchase!`;
+        
+        await sendMessage(chatId, productList);
+      } else {
+        await sendMessage(chatId, '❌ No products available at the moment. Check back soon!');
+      }
+    }
+    // Handle /buy_productslug commands
+    else if (text.startsWith('/buy_')) {
+      const productSlug = text.replace('/buy_', '');
+      const product = await findProductBySlug(supabase, productSlug);
+      
+      if (product) {
+        session = {
+          chatId,
+          productSlug,
+          productId: product.id,
+          productTitle: product.title,
+          productPrice: product.price,
+          awaitingPhone: true,
+        };
+        sessions.set(chatId, session);
+
+        const priceUsd = product.price_usd ? ` (~$${product.price_usd.toFixed(2)})` : '';
+        
+        await sendMessage(chatId, 
+          `🛒 <b>${product.title}</b>\n\n` +
+          `${product.description?.substring(0, 200)}...\n\n` +
+          `💰 Price: <b>KSh ${product.price.toLocaleString()}</b>${priceUsd}\n\n` +
+          `To purchase, share your M-Pesa phone number:`
+        );
+        
+        await requestContact(chatId, '👇 Tap below or type your number (e.g., 0712345678):');
+      } else {
+        await sendMessage(chatId, `❌ Product not found. Type /products to see available items.`);
       }
     }
     // Handle contact sharing (phone number)
@@ -291,7 +382,7 @@ serve(async (req) => {
       const { error: orderError } = await supabase
         .from('pending_orders')
         .insert({
-          user_id: '00000000-0000-0000-0000-000000000000', // Placeholder for telegram users
+          user_id: '00000000-0000-0000-0000-000000000000',
           total_amount: session.productPrice,
           product_ids: [session.productId],
           product_amounts: [session.productPrice],
@@ -329,7 +420,6 @@ serve(async (req) => {
           accessToken,
           phoneNumber,
           session.productPrice!,
-          merchantReference.substring(0, 12),
           `SmartLife Hub - ${session.productTitle?.substring(0, 20)}`
         );
 
@@ -352,7 +442,7 @@ serve(async (req) => {
           );
         } else {
           await sendMessage(chatId,
-            `❌ Failed to initiate payment: ${stkResult.errorMessage || 'Unknown error'}\n\n` +
+            `❌ Failed to initiate payment: ${stkResult.errorMessage || stkResult.CustomerMessage || 'Unknown error'}\n\n` +
             `Please try again or contact support.`
           );
         }
@@ -360,7 +450,7 @@ serve(async (req) => {
         console.error('M-Pesa error:', mpesaError);
         await sendMessage(chatId,
           `❌ Payment error. Please try again later.\n\n` +
-          `If the problem persists, visit our website: smartlifehub.com`
+          `If the problem persists, visit our website.`
         );
       }
     }
@@ -368,15 +458,14 @@ serve(async (req) => {
     else if (session.awaitingPhone && session.productId && /^(\+?254|0)?[17]\d{8}$/.test(text.replace(/\s/g, ''))) {
       const phoneNumber = formatPhoneNumber(text);
       session.phoneNumber = phoneNumber;
+      session.awaitingPhone = false;
       sessions.set(chatId, session);
 
-      // Trigger same payment flow as contact sharing
       await removeKeyboard(chatId,
         `📱 Phone: ${phoneNumber}\n\n` +
-        `🔄 Initiating M-Pesa payment...`
+        `🔄 Initiating M-Pesa payment for <b>${session.productTitle}</b>...`
       );
 
-      // Same STK push logic...
       const merchantReference = `TG-${Date.now()}-${chatId}`;
       
       await supabase.from('pending_orders').insert({
@@ -404,7 +493,6 @@ serve(async (req) => {
           accessToken,
           phoneNumber,
           session.productPrice!,
-          merchantReference.substring(0, 12),
           `SmartLife Hub - ${session.productTitle?.substring(0, 20)}`
         );
 
@@ -423,7 +511,7 @@ serve(async (req) => {
             `✅ M-Pesa prompt sent! Enter your PIN to complete payment.`
           );
         } else {
-          await sendMessage(chatId, `❌ Payment failed: ${stkResult.errorMessage || 'Try again'}`);
+          await sendMessage(chatId, `❌ Payment failed: ${stkResult.errorMessage || stkResult.CustomerMessage || 'Try again'}`);
         }
       } catch (err) {
         console.error('M-Pesa error:', err);
@@ -433,13 +521,14 @@ serve(async (req) => {
     // Handle other messages
     else if (session.awaitingPhone) {
       await sendMessage(chatId,
-        `Please share your phone number using the button below, or type it in format: 0712345678`
+        `Please share your phone number using the button, or type it in format: 0712345678`
       );
     }
     else {
       await sendMessage(chatId,
-        `👋 Welcome to SmartLife Hub!\n\n` +
-        `🛍️ Browse products at @getyourhacks and click any product link to purchase.`
+        `👋 Hi ${firstName}! Welcome to SmartLife Hub!\n\n` +
+        `📱 Type /products to see what's available\n` +
+        `🔗 Or visit @getyourhacks to browse and click any product link to purchase.`
       );
     }
 

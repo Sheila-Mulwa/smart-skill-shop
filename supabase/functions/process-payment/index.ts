@@ -32,8 +32,8 @@ async function getMpesaToken(): Promise<string> {
   
   const auth = btoa(`${consumerKey}:${consumerSecret}`);
   
-  // Sandbox URL (switch to api.safaricom.co.ke for production)
-  const tokenUrl = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+  // Production URL
+  const tokenUrl = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
 
   console.log('Fetching M-Pesa OAuth token...');
 
@@ -97,8 +97,10 @@ async function initiateSTKPush(
   orderId: string,
   description: string
 ): Promise<any> {
-  const shortcode = Deno.env.get('MPESA_SHORTCODE')!;
+  // Use production Paybill and Account Number for bank settlement
+  const shortcode = Deno.env.get('MPESA_PAYBILL') || Deno.env.get('MPESA_SHORTCODE')!;
   const passkey = Deno.env.get('MPESA_PASSKEY')!;
+  const accountNumber = Deno.env.get('MPESA_ACCOUNT_NUMBER') || orderId;
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   
   const timestamp = getTimestamp();
@@ -115,13 +117,14 @@ async function initiateSTKPush(
     PartyB: shortcode,
     PhoneNumber: phoneNumber,
     CallBackURL: callbackUrl,
-    AccountReference: orderId,
+    AccountReference: accountNumber, // Your bank account number
     TransactionDesc: description.substring(0, 13), // Max 13 chars
   };
 
-  console.log('Initiating STK Push:', JSON.stringify({ ...requestBody, Password: '[REDACTED]' }, null, 2));
+  console.log('Initiating STK Push with Paybill:', shortcode, 'Account:', accountNumber);
 
-  const response = await fetch('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
+  // Production URL
+  const response = await fetch('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -229,7 +232,7 @@ serve(async (req) => {
     // Check M-Pesa credentials
     const mpesaConsumerKey = Deno.env.get('MPESA_CONSUMER_KEY');
     const mpesaConsumerSecret = Deno.env.get('MPESA_CONSUMER_SECRET');
-    const mpesaShortcode = Deno.env.get('MPESA_SHORTCODE');
+    const mpesaShortcode = Deno.env.get('MPESA_PAYBILL') || Deno.env.get('MPESA_SHORTCODE');
     const mpesaPasskey = Deno.env.get('MPESA_PASSKEY');
     
     if (!mpesaConsumerKey || !mpesaConsumerSecret || !mpesaShortcode || !mpesaPasskey) {
@@ -250,7 +253,6 @@ serve(async (req) => {
       const orderId = `SLH${Date.now()}`;
       const phoneNumber = formatPhoneNumber(body.payment_details.phone);
       
-      const productTitles = products.map(p => p.title).join(', ');
       const description = 'SmartLifeHub';
 
       // Store pending order first
