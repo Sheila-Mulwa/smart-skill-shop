@@ -18,51 +18,7 @@ interface PaymentRequest {
   };
 }
 
-// Cache token to reduce latency
-let cachedToken: { token: string; expiresAt: number } | null = null;
-
-// Get M-Pesa OAuth token
-async function getMpesaToken(): Promise<string> {
-  if (cachedToken && Date.now() < cachedToken.expiresAt) {
-    return cachedToken.token;
-  }
-
-  const consumerKey = Deno.env.get('MPESA_CONSUMER_KEY')!;
-  const consumerSecret = Deno.env.get('MPESA_CONSUMER_SECRET')!;
-  
-  const auth = btoa(`${consumerKey}:${consumerSecret}`);
-  
-  // Production URL
-  const tokenUrl = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
-
-  console.log('Fetching M-Pesa OAuth token...');
-
-  const response = await fetch(tokenUrl, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Basic ${auth}`,
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('M-Pesa token error:', errorText);
-    throw new Error(`Failed to get M-Pesa token: ${response.status}`);
-  }
-
-  const data = await response.json();
-  
-  // Cache for 50 minutes (token is valid for 1 hour)
-  cachedToken = { 
-    token: data.access_token, 
-    expiresAt: Date.now() + 50 * 60 * 1000 
-  };
-
-  console.log('M-Pesa token obtained successfully');
-  return data.access_token;
-}
-
-// Format phone number for M-Pesa (254XXXXXXXXX format)
+// Format phone number for PayHero (254XXXXXXXXX format)
 function formatPhoneNumber(phone: string): string {
   let cleaned = phone.replace(/[\s\-\+]/g, '');
   
@@ -77,64 +33,46 @@ function formatPhoneNumber(phone: string): string {
   return cleaned;
 }
 
-// Generate timestamp in format YYYYMMDDHHmmss
-function getTimestamp(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
-  return `${year}${month}${day}${hours}${minutes}${seconds}`;
-}
-
-// Initiate STK Push
-async function initiateSTKPush(
-  token: string,
+// Initiate PayHero STK Push
+async function initiatePayHeroSTKPush(
   phoneNumber: string,
   amount: number,
   orderId: string,
   description: string
 ): Promise<any> {
-  // Use production Paybill and Account Number for bank settlement
-  const shortcode = Deno.env.get('MPESA_PAYBILL') || Deno.env.get('MPESA_SHORTCODE')!;
-  const passkey = Deno.env.get('MPESA_PASSKEY')!;
-  const accountNumber = Deno.env.get('MPESA_ACCOUNT_NUMBER') || orderId;
+  const authToken = Deno.env.get('PAYHERO_AUTH_TOKEN')!;
+  const channelId = Deno.env.get('PAYHERO_CHANNEL_ID')!;
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   
-  const timestamp = getTimestamp();
-  const password = btoa(`${shortcode}${passkey}${timestamp}`);
-  const callbackUrl = `${supabaseUrl}/functions/v1/mpesa-callback`;
+  const callbackUrl = `${supabaseUrl}/functions/v1/payhero-callback`;
 
   const requestBody = {
-    BusinessShortCode: shortcode,
-    Password: password,
-    Timestamp: timestamp,
-    TransactionType: 'CustomerPayBillOnline',
-    Amount: Math.ceil(amount), // M-Pesa requires whole numbers
-    PartyA: phoneNumber,
-    PartyB: shortcode,
-    PhoneNumber: phoneNumber,
-    CallBackURL: callbackUrl,
-    AccountReference: accountNumber, // Your bank account number
-    TransactionDesc: description.substring(0, 13), // Max 13 chars
+    amount: Math.ceil(amount),
+    phone_number: phoneNumber,
+    channel_id: parseInt(channelId),
+    provider: "m-pesa",
+    external_reference: orderId,
+    callback_url: callbackUrl,
+    description: description.substring(0, 100),
   };
 
-  console.log('Initiating STK Push with Paybill:', shortcode, 'Account:', accountNumber);
+  console.log('Initiating PayHero STK Push:', JSON.stringify(requestBody, null, 2));
 
-  // Production URL
-  const response = await fetch('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
+  const response = await fetch('https://backend.payhero.co.ke/api/v2/payments', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Basic ${authToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(requestBody),
   });
 
   const data = await response.json();
-  console.log('STK Push response:', JSON.stringify(data, null, 2));
+  console.log('PayHero STK Push response:', JSON.stringify(data, null, 2));
+
+  if (!response.ok) {
+    throw new Error(data.message || data.error || 'PayHero STK Push failed');
+  }
 
   return data;
 }
@@ -229,31 +167,26 @@ serve(async (req) => {
 
     const totalAmount = body.items.reduce((sum, item) => sum + item.amount, 0);
 
-    // Check M-Pesa credentials
-    const mpesaConsumerKey = Deno.env.get('MPESA_CONSUMER_KEY');
-    const mpesaConsumerSecret = Deno.env.get('MPESA_CONSUMER_SECRET');
-    const mpesaShortcode = Deno.env.get('MPESA_PAYBILL') || Deno.env.get('MPESA_SHORTCODE');
-    const mpesaPasskey = Deno.env.get('MPESA_PASSKEY');
+    // Check PayHero credentials
+    const payheroAuthToken = Deno.env.get('PAYHERO_AUTH_TOKEN');
+    const payheroChannelId = Deno.env.get('PAYHERO_CHANNEL_ID');
     
-    if (!mpesaConsumerKey || !mpesaConsumerSecret || !mpesaShortcode || !mpesaPasskey) {
-      console.error('M-Pesa credentials not fully configured');
+    if (!payheroAuthToken || !payheroChannelId) {
+      console.error('PayHero credentials not configured');
       return new Response(
         JSON.stringify({ 
           success: false, 
           status: 'pending_integration',
-          message: 'M-Pesa integration pending setup. Please contact support.'
+          message: 'Payment integration pending setup. Please contact support.'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     try {
-      const token = await getMpesaToken();
-      
       const orderId = `SLH${Date.now()}`;
       const phoneNumber = formatPhoneNumber(body.payment_details.phone);
-      
-      const description = 'SmartLifeHub';
+      const description = `SmartLifeHub Purchase - ${products.map(p => p.title).join(', ')}`.substring(0, 100);
 
       // Store pending order first
       const { error: pendingError } = await supabaseAdmin
@@ -271,49 +204,48 @@ serve(async (req) => {
         console.error('Failed to store pending order:', pendingError);
       }
 
-      // Initiate STK Push
-      const stkResponse = await initiateSTKPush(
-        token,
+      // Initiate PayHero STK Push
+      const stkResponse = await initiatePayHeroSTKPush(
         phoneNumber,
         totalAmount,
         orderId,
         description
       );
 
-      if (stkResponse.ResponseCode === '0') {
-        // Update pending order with checkout request ID
+      // PayHero returns success with reference
+      if (stkResponse.success || stkResponse.reference) {
+        // Update pending order with PayHero reference
         await supabaseAdmin
           .from('pending_orders')
-          .update({ order_tracking_id: stkResponse.CheckoutRequestID })
+          .update({ order_tracking_id: stkResponse.reference || stkResponse.id })
           .eq('merchant_reference', orderId);
 
         return new Response(
           JSON.stringify({ 
             success: true, 
             status: 'stk_sent',
-            checkout_request_id: stkResponse.CheckoutRequestID,
-            merchant_request_id: stkResponse.MerchantRequestID,
+            checkout_request_id: stkResponse.reference || stkResponse.id,
             message: 'Please check your phone and enter your M-Pesa PIN to complete payment.'
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       } else {
-        console.error('STK Push failed:', stkResponse);
+        console.error('PayHero STK Push failed:', stkResponse);
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: stkResponse.errorMessage || stkResponse.ResponseDescription || 'Failed to initiate payment'
+            error: stkResponse.message || stkResponse.error || 'Failed to initiate payment'
           }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-    } catch (mpesaError) {
-      console.error('M-Pesa processing error:', mpesaError);
+    } catch (paymentError) {
+      console.error('PayHero processing error:', paymentError);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: mpesaError instanceof Error ? mpesaError.message : 'Payment processing failed'
+          error: paymentError instanceof Error ? paymentError.message : 'Payment processing failed'
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
