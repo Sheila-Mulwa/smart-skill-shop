@@ -40,9 +40,15 @@ async function initiatePayHeroSTKPush(
   orderId: string,
   description: string
 ): Promise<any> {
-  const authToken = Deno.env.get('PAYHERO_AUTH_TOKEN')!;
+  const payHeroAuthToken = Deno.env.get('PAYHERO_AUTH_TOKEN')!;
   const channelId = Deno.env.get('PAYHERO_CHANNEL_ID')!;
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+
+  // PayHero docs expect: Authorization: Basic YOUR_AUTH_TOKEN
+  // Some users save the value with the "Basic " prefix already, so normalize here.
+  const payHeroAuthorization = payHeroAuthToken.trim().toLowerCase().startsWith('basic ')
+    ? payHeroAuthToken.trim()
+    : `Basic ${payHeroAuthToken.trim()}`;
   
   const callbackUrl = `${supabaseUrl}/functions/v1/payhero-callback`;
 
@@ -61,7 +67,7 @@ async function initiatePayHeroSTKPush(
   const response = await fetch('https://backend.payhero.co.ke/api/v2/payments', {
     method: 'POST',
     headers: {
-      'Authorization': `Basic ${authToken}`,
+      'Authorization': payHeroAuthorization,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(requestBody),
