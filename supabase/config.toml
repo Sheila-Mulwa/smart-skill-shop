@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.telegram-mpesa-callback]
 verify_jwt = false
+
+[functions.payhero-callback]
+verify_jwt = false
