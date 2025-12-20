@@ -28,6 +28,8 @@ const CheckoutPage = () => {
   const [pendingIntegration, setPendingIntegration] = useState(false);
   const [awaitingPayment, setAwaitingPayment] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [checkoutProductIds, setCheckoutProductIds] = useState<string[]>([]);
   const { downloadProduct, isDownloading, downloadingId } = useSecureDownload();
   const { rate: exchangeRate } = useExchangeRate();
 
@@ -80,6 +82,123 @@ const CheckoutPage = () => {
       supabase.removeChannel(channel);
     };
   }, [user, awaitingPayment, clearCart]);
+
+  // If we didn't get an order id from the payment initiation response (older sessions),
+  // try to infer the latest pending order for this user.
+  useEffect(() => {
+    if (!user || !awaitingPayment || currentOrderId) return;
+
+    const sinceIso = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+
+    supabase
+      .from('pending_orders')
+      .select('merchant_reference')
+      .eq('user_id', user.id)
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('Failed to infer latest pending order:', error.message);
+          return;
+        }
+
+        if (data?.merchant_reference) {
+          if (!checkoutProductIds.length) {
+            setCheckoutProductIds(items.map((item) => item.product.id));
+          }
+          setCurrentOrderId(data.merchant_reference);
+        }
+      });
+  }, [user, awaitingPayment, currentOrderId, checkoutProductIds.length, items]);
+
+  // Fallback: poll pending order status (covers cases where realtime is delayed/missed)
+  useEffect(() => {
+    if (!user || !awaitingPayment || !currentOrderId) return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 90; // ~3 minutes at 2s interval
+
+    const interval = setInterval(async () => {
+      attempts += 1;
+
+      try {
+        const { data: pendingOrder, error: pendingError } = await supabase
+          .from('pending_orders')
+          .select('status, product_ids')
+          .eq('merchant_reference', currentOrderId)
+          .maybeSingle();
+
+        if (pendingError) {
+          console.warn('Pending order poll error:', pendingError.message);
+          return;
+        }
+
+        if (!pendingOrder) return;
+
+        if (pendingOrder.status === 'completed') {
+          const productIds = (pendingOrder.product_ids?.length ? pendingOrder.product_ids : checkoutProductIds) || [];
+
+          const { data: products, error: productsError } = await supabase
+            .from('products')
+            .select('id, title, pdf_url')
+            .in('id', productIds);
+
+          if (productsError) {
+            console.warn('Product fetch error after payment:', productsError.message);
+          }
+
+          if (cancelled) return;
+
+          if (products && products.length > 0) {
+            setPurchasedProducts(products as PurchasedProduct[]);
+          }
+
+          setPurchaseComplete(true);
+          setAwaitingPayment(false);
+          setCurrentOrderId(null);
+          clearCart();
+          toast({
+            title: 'Payment Successful!',
+            description: 'Your product is ready for download.',
+          });
+          clearInterval(interval);
+          return;
+        }
+
+        if (pendingOrder.status === 'failed') {
+          if (cancelled) return;
+          setAwaitingPayment(false);
+          setCurrentOrderId(null);
+          toast({
+            title: 'Payment Failed',
+            description: 'Your payment was not completed. Please try again.',
+            variant: 'destructive',
+          });
+          clearInterval(interval);
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          if (cancelled) return;
+          toast({
+            title: 'Still waiting for payment',
+            description: 'If you already paid, please wait a moment then refresh this page.',
+          });
+          clearInterval(interval);
+        }
+      } catch (e) {
+        console.error('Pending order poll unexpected error:', e);
+      }
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user, awaitingPayment, currentOrderId, checkoutProductIds, clearCart]);
 
   const totalPrice = getTotalPrice();
   const totalUsd = totalPrice * exchangeRate;
@@ -144,6 +263,9 @@ const CheckoutPage = () => {
       console.log('Payment response:', data);
 
       if (data.success && data.status === 'stk_sent') {
+        const orderIdFromResponse = data?.order_id || data?.orderId || data?.merchant_reference || null;
+        setCurrentOrderId(orderIdFromResponse);
+        setCheckoutProductIds(items.map((item) => item.product.id));
         setAwaitingPayment(true);
         toast({
           title: 'Check Your Phone',
@@ -228,7 +350,14 @@ const CheckoutPage = () => {
                 <span>Check your phone for the M-Pesa prompt</span>
               </div>
             </div>
-            <Button variant="outline" className="mt-6" onClick={() => setAwaitingPayment(false)}>
+            <Button
+              variant="outline"
+              className="mt-6"
+              onClick={() => {
+                setAwaitingPayment(false);
+                setCurrentOrderId(null);
+              }}
+            >
               Try Again
             </Button>
           </div>
