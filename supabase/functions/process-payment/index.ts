@@ -230,6 +230,7 @@ serve(async (req) => {
           JSON.stringify({ 
             success: true, 
             status: 'stk_sent',
+            order_id: orderId,
             checkout_request_id: stkResponse.reference || stkResponse.id,
             message: 'Please check your phone and enter your M-Pesa PIN to complete payment.'
           }),

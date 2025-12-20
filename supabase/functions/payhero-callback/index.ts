@@ -6,25 +6,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface PayHeroCallbackResponse {
-  MerchantRequestID: string;
-  CheckoutRequestID: string;
-  ResultCode: number;
-  Amount: number;
-  MpesaReceiptNumber: string;
-  Phone: string;
-  ExternalReference: string;
-  Status: string;
-  ResultDesc: string;
-  ServiceWalletBalance: number;
-  PaymentWalletBalance: number;
-  ChannelID: number;
-}
+type AnyRecord = Record<string, any>;
 
-interface PayHeroCallback {
-  status: boolean;
-  response: PayHeroCallbackResponse;
-  forward_url?: string;
+interface PayHeroCallbackResponse {
+  MerchantRequestID?: string;
+  CheckoutRequestID?: string;
+  ResultCode?: number;
+  Amount?: number;
+  MpesaReceiptNumber?: string;
+  Phone?: string;
+  ExternalReference?: string;
+  Status?: string;
+  ResultDesc?: string;
+  ChannelID?: number;
 }
 
 serve(async (req) => {
@@ -34,26 +28,81 @@ serve(async (req) => {
 
   try {
     console.log('PayHero callback received');
-    
-    const callback: PayHeroCallback = await req.json();
-    console.log('Callback data:', JSON.stringify(callback, null, 2));
 
-    // PayHero sends status as boolean and details in response object
-    const paymentResponse = callback.response;
-    if (!paymentResponse) {
-      console.error('No response object in callback');
+    const body: AnyRecord = await req.json();
+    console.log('Callback data:', JSON.stringify(body, null, 2));
+
+    // PayHero payloads can vary. Prefer nested `response` if present.
+    const response: PayHeroCallbackResponse | undefined = body?.response;
+
+    const externalReference =
+      response?.ExternalReference ||
+      body?.external_reference ||
+      body?.ExternalReference ||
+      body?.reference ||
+      body?.checkout_request_id ||
+      '';
+
+    const resultCode =
+      typeof response?.ResultCode === 'number'
+        ? response?.ResultCode
+        : typeof body?.result_code === 'number'
+          ? body?.result_code
+          : typeof body?.ResultCode === 'number'
+            ? body?.ResultCode
+            : undefined;
+
+    const statusRaw =
+      response?.Status ||
+      (typeof body?.status === 'string' ? body.status : undefined) ||
+      body?.Status ||
+      '';
+
+    const status = String(statusRaw).toLowerCase();
+
+    const mpesaReceiptNumber =
+      response?.MpesaReceiptNumber ||
+      body?.provider_reference ||
+      body?.mpesa_receipt_number ||
+      body?.MpesaReceiptNumber ||
+      response?.CheckoutRequestID ||
+      body?.checkout_request_id ||
+      '';
+
+    const resultDesc =
+      response?.ResultDesc ||
+      body?.result_description ||
+      body?.ResultDesc ||
+      '';
+
+    console.log('Parsed callback:', {
+      externalReference,
+      status,
+      resultCode,
+      mpesaReceiptNumber,
+    });
+
+    if (!externalReference) {
+      console.error('Missing external reference in callback');
       return new Response(
-        JSON.stringify({ success: true, message: 'Callback received but no response data' }),
+        JSON.stringify({ success: true, message: 'Callback received - missing external reference' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const externalReference = paymentResponse.ExternalReference;
-    const resultCode = paymentResponse.ResultCode;
-    const status = paymentResponse.Status?.toLowerCase();
-    const mpesaReceiptNumber = paymentResponse.MpesaReceiptNumber || '';
+    const isSuccess =
+      resultCode === 0 ||
+      status === 'success' ||
+      status === 'successful' ||
+      status === 'completed' ||
+      status === 'ok';
 
-    console.log('Processing payment - Reference:', externalReference, 'Status:', status, 'ResultCode:', resultCode);
+    const isFailed =
+      status === 'failed' ||
+      status === 'cancelled' ||
+      status === 'canceled' ||
+      status === 'rejected' ||
+      (typeof resultCode === 'number' && resultCode !== 0);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -64,51 +113,73 @@ serve(async (req) => {
       .from('pending_orders')
       .select('*')
       .eq('merchant_reference', externalReference)
-      .single();
+      .maybeSingle();
 
-    if (orderError || !pendingOrder) {
-      console.error('Pending order not found:', externalReference, orderError?.message);
+    if (orderError) {
+      console.error('Error fetching pending order:', orderError.message);
+      return new Response(
+        JSON.stringify({ success: true, message: 'Callback received - order lookup error' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!pendingOrder) {
+      console.error('Pending order not found:', externalReference);
       return new Response(
         JSON.stringify({ success: true, message: 'Callback received - order not found' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Found pending order:', pendingOrder.id, 'User:', pendingOrder.user_id);
+    console.log('Found pending order:', {
+      id: pendingOrder.id,
+      user_id: pendingOrder.user_id,
+      status: pendingOrder.status,
+      product_count: pendingOrder.product_ids?.length || 0,
+    });
 
-    // Check payment status - ResultCode 0 means success
-    if (resultCode === 0 || status === 'success' || status === 'successful' || status === 'completed') {
+    if (isSuccess) {
       console.log('Payment successful! Receipt:', mpesaReceiptNumber);
 
-      // Update pending order status
-      const { error: updateError } = await supabase
+      await supabase
         .from('pending_orders')
         .update({ status: 'completed' })
         .eq('id', pendingOrder.id);
 
-      if (updateError) {
-        console.error('Failed to update pending order:', updateError.message);
-      }
+      // Create purchase records for each product (idempotent)
+      const productIds: string[] = pendingOrder.product_ids || [];
+      const productAmounts: number[] = pendingOrder.product_amounts || [];
 
-      // Create purchase records for each product
-      console.log('Creating purchase records for', pendingOrder.product_ids.length, 'products');
-      
-      for (let i = 0; i < pendingOrder.product_ids.length; i++) {
-        const productId = pendingOrder.product_ids[i];
-        const amount = pendingOrder.product_amounts[i];
-        
-        console.log('Inserting purchase - Product:', productId, 'Amount:', amount, 'User:', pendingOrder.user_id);
-        
+      for (let i = 0; i < productIds.length; i++) {
+        const productId = productIds[i];
+        const amount = productAmounts[i] ?? pendingOrder.total_amount;
+
+        const { data: existingPurchase, error: existingError } = await supabase
+          .from('purchases')
+          .select('id')
+          .eq('user_id', pendingOrder.user_id)
+          .eq('product_id', productId)
+          .maybeSingle();
+
+        if (existingError) {
+          console.error('Existing purchase lookup error:', existingError.message);
+        }
+
+        if (existingPurchase) {
+          console.log('Purchase already exists, skipping insert:', existingPurchase.id);
+          continue;
+        }
+
         const { data: purchaseData, error: purchaseError } = await supabase
           .from('purchases')
           .insert({
             user_id: pendingOrder.user_id,
             product_id: productId,
-            amount: amount,
+            amount,
             payment_method: 'mpesa',
             transaction_id: mpesaReceiptNumber,
           })
-          .select()
+          .select('id')
           .single();
 
         if (purchaseError) {
@@ -118,18 +189,16 @@ serve(async (req) => {
         }
       }
 
-      console.log('All purchase records created successfully');
+    } else if (isFailed) {
+      console.log('Payment failed:', resultDesc || status, 'ResultCode:', resultCode);
 
-    } else if (status === 'failed' || status === 'cancelled' || status === 'rejected' || resultCode !== 0) {
-      console.log('Payment failed:', paymentResponse.ResultDesc || status, 'ResultCode:', resultCode);
-      
       await supabase
         .from('pending_orders')
         .update({ status: 'failed' })
         .eq('id', pendingOrder.id);
 
     } else {
-      console.log('Unknown payment status:', status, 'ResultCode:', resultCode);
+      console.log('Payment status not actionable yet:', { status, resultCode });
     }
 
     return new Response(
