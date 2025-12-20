@@ -6,16 +6,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface PayHeroCallbackResponse {
+  MerchantRequestID: string;
+  CheckoutRequestID: string;
+  ResultCode: number;
+  Amount: number;
+  MpesaReceiptNumber: string;
+  Phone: string;
+  ExternalReference: string;
+  Status: string;
+  ResultDesc: string;
+  ServiceWalletBalance: number;
+  PaymentWalletBalance: number;
+  ChannelID: number;
+}
+
 interface PayHeroCallback {
-  status: string;
-  external_reference: string;
-  reference?: string;
-  amount?: number;
-  phone_number?: string;
-  provider_reference?: string;
-  checkout_request_id?: string;
-  merchant_request_id?: string;
-  result_description?: string;
+  status: boolean;
+  response: PayHeroCallbackResponse;
+  forward_url?: string;
 }
 
 serve(async (req) => {
@@ -29,9 +38,22 @@ serve(async (req) => {
     const callback: PayHeroCallback = await req.json();
     console.log('Callback data:', JSON.stringify(callback, null, 2));
 
-    const externalReference = callback.external_reference;
-    const status = callback.status?.toLowerCase();
-    const mpesaReceiptNumber = callback.provider_reference || callback.checkout_request_id || '';
+    // PayHero sends status as boolean and details in response object
+    const paymentResponse = callback.response;
+    if (!paymentResponse) {
+      console.error('No response object in callback');
+      return new Response(
+        JSON.stringify({ success: true, message: 'Callback received but no response data' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const externalReference = paymentResponse.ExternalReference;
+    const resultCode = paymentResponse.ResultCode;
+    const status = paymentResponse.Status?.toLowerCase();
+    const mpesaReceiptNumber = paymentResponse.MpesaReceiptNumber || '';
+
+    console.log('Processing payment - Reference:', externalReference, 'Status:', status, 'ResultCode:', resultCode);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -45,48 +67,61 @@ serve(async (req) => {
       .single();
 
     if (orderError || !pendingOrder) {
-      console.error('Pending order not found:', externalReference);
+      console.error('Pending order not found:', externalReference, orderError?.message);
       return new Response(
-        JSON.stringify({ success: true, message: 'Callback received' }),
+        JSON.stringify({ success: true, message: 'Callback received - order not found' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Found pending order:', pendingOrder);
+    console.log('Found pending order:', pendingOrder.id, 'User:', pendingOrder.user_id);
 
-    // Check payment status - PayHero uses "SUCCESS" for successful payments
-    if (status === 'success' || status === 'successful' || status === 'completed') {
-      console.log('Payment successful:', mpesaReceiptNumber);
+    // Check payment status - ResultCode 0 means success
+    if (resultCode === 0 || status === 'success' || status === 'successful' || status === 'completed') {
+      console.log('Payment successful! Receipt:', mpesaReceiptNumber);
 
       // Update pending order status
-      await supabase
+      const { error: updateError } = await supabase
         .from('pending_orders')
         .update({ status: 'completed' })
         .eq('id', pendingOrder.id);
 
-      // Create purchase records for each product
-      const purchasePromises = pendingOrder.product_ids.map((productId: string, index: number) => 
-        supabase.from('purchases').insert({
-          user_id: pendingOrder.user_id,
-          product_id: productId,
-          amount: pendingOrder.product_amounts[index],
-          payment_method: 'mpesa',
-          transaction_id: mpesaReceiptNumber,
-        })
-      );
+      if (updateError) {
+        console.error('Failed to update pending order:', updateError.message);
+      }
 
-      const results = await Promise.all(purchasePromises);
+      // Create purchase records for each product
+      console.log('Creating purchase records for', pendingOrder.product_ids.length, 'products');
       
-      for (const result of results) {
-        if (result.error) {
-          console.error('Failed to create purchase record:', result.error);
+      for (let i = 0; i < pendingOrder.product_ids.length; i++) {
+        const productId = pendingOrder.product_ids[i];
+        const amount = pendingOrder.product_amounts[i];
+        
+        console.log('Inserting purchase - Product:', productId, 'Amount:', amount, 'User:', pendingOrder.user_id);
+        
+        const { data: purchaseData, error: purchaseError } = await supabase
+          .from('purchases')
+          .insert({
+            user_id: pendingOrder.user_id,
+            product_id: productId,
+            amount: amount,
+            payment_method: 'mpesa',
+            transaction_id: mpesaReceiptNumber,
+          })
+          .select()
+          .single();
+
+        if (purchaseError) {
+          console.error('Failed to create purchase record:', purchaseError.message);
+        } else {
+          console.log('Purchase record created:', purchaseData.id);
         }
       }
 
-      console.log('Purchase records created successfully');
+      console.log('All purchase records created successfully');
 
-    } else if (status === 'failed' || status === 'cancelled' || status === 'rejected') {
-      console.log('Payment failed:', callback.result_description || status);
+    } else if (status === 'failed' || status === 'cancelled' || status === 'rejected' || resultCode !== 0) {
+      console.log('Payment failed:', paymentResponse.ResultDesc || status, 'ResultCode:', resultCode);
       
       await supabase
         .from('pending_orders')
@@ -94,7 +129,7 @@ serve(async (req) => {
         .eq('id', pendingOrder.id);
 
     } else {
-      console.log('Payment status:', status, '- No action taken');
+      console.log('Unknown payment status:', status, 'ResultCode:', resultCode);
     }
 
     return new Response(
@@ -105,7 +140,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Callback error:', error);
     return new Response(
-      JSON.stringify({ success: true, message: 'Callback received' }),
+      JSON.stringify({ success: true, message: 'Callback received with error' }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
