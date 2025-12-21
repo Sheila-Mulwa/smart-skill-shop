@@ -77,7 +77,13 @@ async function initiatePayHeroSTKPush(
   console.log('PayHero STK Push response:', JSON.stringify(data, null, 2));
 
   if (!response.ok) {
-    throw new Error(data.message || data.error || 'PayHero STK Push failed');
+    const providerMessage =
+      data?.error_message ||
+      data?.message ||
+      (typeof data?.error === 'string' ? data.error : undefined) ||
+      'Payment provider rejected the request';
+
+    throw new Error(providerMessage);
   }
 
   return data;
@@ -189,8 +195,10 @@ serve(async (req) => {
       );
     }
 
+    let orderId: string | null = null;
+
     try {
-      const orderId = `SLH${Date.now()}`;
+      orderId = `SLH${Date.now()}`;
       const phoneNumber = formatPhoneNumber(body.payment_details.phone);
       const description = `SmartLifeHub Purchase - ${products.map(p => p.title).join(', ')}`.substring(0, 100);
 
@@ -227,8 +235,8 @@ serve(async (req) => {
           .eq('merchant_reference', orderId);
 
         return new Response(
-          JSON.stringify({ 
-            success: true, 
+          JSON.stringify({
+            success: true,
             status: 'stk_sent',
             order_id: orderId,
             checkout_request_id: stkResponse.reference || stkResponse.id,
@@ -236,25 +244,41 @@ serve(async (req) => {
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
-      } else {
-        console.error('PayHero STK Push failed:', stkResponse);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: stkResponse.message || stkResponse.error || 'Failed to initiate payment'
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
       }
 
-    } catch (paymentError) {
-      console.error('PayHero processing error:', paymentError);
+      console.error('PayHero STK Push failed:', stkResponse);
+      await supabaseAdmin
+        .from('pending_orders')
+        .update({ status: 'failed' })
+        .eq('merchant_reference', orderId);
+
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: paymentError instanceof Error ? paymentError.message : 'Payment processing failed'
+        JSON.stringify({
+          success: false,
+          status: 'failed',
+          error: stkResponse.message || stkResponse.error || 'Failed to initiate payment'
         }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+    } catch (paymentError) {
+      const message = paymentError instanceof Error ? paymentError.message : 'Payment processing failed';
+      console.error('PayHero processing error:', message);
+
+      if (orderId) {
+        await supabaseAdmin
+          .from('pending_orders')
+          .update({ status: 'failed' })
+          .eq('merchant_reference', orderId);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          status: 'failed',
+          error: message,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

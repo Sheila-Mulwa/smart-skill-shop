@@ -254,7 +254,7 @@ const CheckoutPage = () => {
         console.error('Payment error:', error);
         toast({
           title: 'Payment Failed',
-          description: error.message || 'Something went wrong. Please try again.',
+          description: 'Could not start the payment. Please try again.',
           variant: 'destructive',
         });
         return;
